@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "exportedAt": "2026-10-23",
+  "owner": "Mike",
+  "units": { "weight": "lb" },
+  "defaults": {
+    "autoStartRest": true,
+    "restSeconds": { "compound": 150, "isolation": 75 },
+    "targetSetsRule": "sets.max 为目标组数；达到 sets.min 后允许手动结束该动作",
+    "effort": "复合动作每组留 1-2 次余力，孤立动作留 0-1 次，不做力竭",
+    "progression": {
+      "rule": "连续两次训练所有组都达到 reps.max → 下次加重；连续两周次数下降 → 先减一组，不减重量",
+      "incrementLb": { "upper": 5, "lowerMachine": 10, "assistedPullUp": -5 }
+    }
+  },
+  "dayTemplates": [
+    {
+      "id": "push",
+      "name": "推日",
+      "type": "strength",
+      "enabled": true,
+      "exercises": [
+        { "id": "incline-bench", "name": "斜上卧推", "muscle": "胸", "load": { "value": 105, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 6, "max": 10 }, "restSeconds": 150, "alternates": [] },
+        { "id": "flat-bench", "name": "卧推", "muscle": "胸", "load": { "value": 105, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 6, "max": 10 }, "restSeconds": 150, "alternates": [ { "name": "斜下胸推机器", "load": { "value": 45, "unit": "lb" } } ] },
+        { "id": "seated-ohp", "name": "坐姿肩推", "muscle": "肩", "load": { "value": 30, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 6, "max": 10 }, "restSeconds": 120, "alternates": [] },
+        { "id": "lateral-raise", "name": "侧平举", "muscle": "肩", "load": { "value": 15, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 12, "max": 20 }, "restSeconds": 60, "alternates": [] },
+        { "id": "db-overhead-tri", "name": "三头肌单手站姿哑铃", "muscle": "三头", "load": { "value": 25, "unit": "lb" }, "sets": { "min": 2, "max": 3 }, "reps": { "min": 10, "max": 15 }, "restSeconds": 75, "alternates": [] }
+      ]
+    },
+    {
+      "id": "pull",
+      "name": "拉日",
+      "type": "strength",
+      "enabled": true,
+      "exercises": [
+        { "id": "assisted-pullup", "name": "引体向上", "muscle": "背", "load": { "value": 37.5, "unit": "lb", "assisted": true, "label": "37.5 助力" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 6, "max": 10 }, "restSeconds": 150, "alternates": [], "notes": "助力重量越小越难，进阶方向是减助力" },
+        { "id": "cable-row", "name": "划船", "muscle": "背", "load": { "value": 110, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 8, "max": 12 }, "restSeconds": 120, "alternates": [ { "name": "胸部支撑哑铃划船" }, { "name": "坐姿划船机" }, { "name": "宽握绳索划船" }, { "name": "T杠划船" } ], "notes": "替代动作每 4-6 周轮换一次" },
+        { "id": "one-arm-db-row", "name": "单臂哑铃划船", "muscle": "背", "load": { "value": null, "unit": "lb" }, "perSide": true, "sets": { "min": 3, "max": 3 }, "reps": { "min": 8, "max": 12 }, "restSeconds": 90, "alternates": [ { "name": "单臂绳索划船" }, { "name": "单臂机器划船" }, { "name": "上斜凳单臂胸支撑划船" } ], "notes": "重量以弱侧（左）为准，两侧组数相同" },
+        { "id": "face-pull", "name": "面拉", "muscle": "后束/肩袖", "load": { "value": 57.5, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 15, "max": 20 }, "restSeconds": 60, "alternates": [] },
+        { "id": "biceps-curl", "name": "肱二弯举", "muscle": "二头", "load": { "value": 25, "unit": "lb" }, "sets": { "min": 2, "max": 3 }, "reps": { "min": 10, "max": 15 }, "restSeconds": 60, "alternates": [] },
+        { "id": "hanging-leg-raise", "name": "悬垂举腿", "muscle": "核心", "load": { "bodyweight": true, "label": "自重" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 10, "max": 15 }, "restSeconds": 60, "alternates": [] }
+      ]
+    },
+    {
+      "id": "legs",
+      "name": "腿日",
+      "type": "strength",
+      "enabled": true,
+      "exercises": [
+        { "id": "pendulum-squat", "name": "钟摆深蹲", "muscle": "股四头/臀", "load": { "value": 540, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 6, "max": 10 }, "restSeconds": 180, "alternates": [] },
+        { "id": "hip-thrust", "name": "负重臀桥", "muscle": "臀", "load": { "value": 140, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 8, "max": 12 }, "restSeconds": 120, "alternates": [ { "name": "罗马尼亚硬拉" } ], "notes": "顶端停 1 秒，骨盆略后倾，不用下背顶" },
+        { "id": "leg-curl", "name": "腿弯举", "muscle": "腘绳肌", "load": { "value": 120, "unit": "lb", "perSideLoad": true, "label": "120 每边" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 10, "max": 15 }, "restSeconds": 90, "alternates": [] },
+        { "id": "leg-extension", "name": "腿屈伸", "muscle": "股四头", "load": { "value": 70, "unit": "lb", "perSideLoad": true, "label": "70 每边" }, "sets": { "min": 2, "max": 3 }, "reps": { "min": 10, "max": 15 }, "restSeconds": 75, "alternates": [] },
+        { "id": "walking-lunge", "name": "弓步走", "muscle": "股四头/臀", "load": { "value": 50, "unit": "lb" }, "perSide": true, "sets": { "min": 1, "max": 2 }, "reps": { "min": 8, "max": 12 }, "restSeconds": 90, "alternates": [ { "name": "分腿蹲" } ], "notes": "一周打 2 次球减到 2 组以内，打 3 次球跳过" },
+        { "id": "standing-calf-raise", "name": "站姿提踵", "muscle": "小腿", "load": { "value": null, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 8, "max": 12 }, "restSeconds": 60, "alternates": [] },
+        { "id": "back-extension", "name": "俯卧挺身", "muscle": "下背/臀/腘绳", "load": { "bodyweight": true, "label": "自重" }, "sets": { "min": 2, "max": 2 }, "reps": { "min": 12, "max": 15 }, "restSeconds": 60, "alternates": [] }
+      ]
+    },
+    {
+      "id": "upperB",
+      "name": "上肢B + 二区",
+      "type": "strength+cardio",
+      "enabled": false,
+      "enableWhen": "7.5 mg 剂量稳定、三餐结构跑顺之后（预计 2026-11 上旬）加入周四；在此之前周四只做二区",
+      "exercises": [
+        { "id": "machine-chest-press", "name": "器械推胸", "muscle": "胸", "load": { "value": null, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 10, "max": 12 }, "restSeconds": 90, "alternates": [ { "name": "哑铃平板卧推" } ] },
+        { "id": "lat-pulldown", "name": "高位下拉", "muscle": "背", "load": { "value": null, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 10, "max": 12 }, "restSeconds": 90, "alternates": [ { "name": "直臂下压" } ] },
+        { "id": "cable-lateral-raise", "name": "绳索侧平举", "muscle": "肩", "load": { "value": null, "unit": "lb" }, "sets": { "min": 2, "max": 2 }, "reps": { "min": 15, "max": 20 }, "restSeconds": 60, "alternates": [ { "name": "哑铃侧平举", "load": { "value": 15, "unit": "lb" } } ] },
+        { "id": "rear-delt-fly", "name": "后束飞鸟", "muscle": "后束", "load": { "value": null, "unit": "lb" }, "sets": { "min": 2, "max": 2 }, "reps": { "min": 15, "max": 20 }, "restSeconds": 60, "alternates": [ { "name": "反向蝶机" } ] },
+        { "id": "triceps-pushdown", "name": "三头绳索下压", "muscle": "三头", "load": { "value": null, "unit": "lb" }, "sets": { "min": 2, "max": 2 }, "reps": { "min": 12, "max": 15 }, "restSeconds": 60, "alternates": [ { "name": "绳索过头伸展" } ] },
+        { "id": "db-curl", "name": "哑铃弯举", "muscle": "二头", "load": { "value": 25, "unit": "lb" }, "sets": { "min": 2, "max": 2 }, "reps": { "min": 10, "max": 12 }, "restSeconds": 60, "alternates": [ { "name": "锤式弯举" } ] }
+      ],
+      "cardio": { "id": "zone2", "name": "二区有氧", "modality": [ "坡度快走", "骑行" ], "durationMin": { "min": 30, "max": 40 }, "heartRate": { "min": 120, "max": 140, "cap": 145 }, "order": "力量之后" }
+    }
+  ],
+  "cardioTemplates": [
+    { "id": "zone2-30", "name": "二区 30 分钟", "modality": [ "坡度快走", "骑行" ], "durationMin": 30, "heartRate": { "min": 120, "max": 140, "cap": 145 } },
+    { "id": "zone2-40", "name": "二区 40 分钟", "modality": [ "坡度快走", "骑行" ], "durationMin": 40, "heartRate": { "min": 120, "max": 140, "cap": 145 } },
+    { "id": "zone2-45", "name": "二区 40-45 分钟", "modality": [ "坡度快走", "骑行" ], "durationMin": 45, "heartRate": { "min": 120, "max": 140, "cap": 145 } },
+    { "id": "ball", "name": "羽毛球", "notes": "记录时长、平均心率、Zone 3 以上时间；平均 ≤140 且 Zone3+ <15 分钟算中强度" },
+    { "id": "walk", "name": "散步", "durationMin": 30 }
+  ],
+  "weeklySchedule": [
+    { "weekday": 1, "label": "周一", "primary": { "type": "day", "id": "pull" } },
+    { "weekday": 2, "label": "周二", "primary": { "type": "ballOptional" }, "fallback": { "type": "cardio", "id": "zone2-30" } },
+    { "weekday": 3, "label": "周三", "primary": { "type": "day", "id": "legs" } },
+    { "weekday": 4, "label": "周四", "primary": { "type": "day", "id": "upperB" }, "fallback": { "type": "cardio", "id": "zone2-40" }, "note": "上肢B 未启用时只做二区 30-40 分钟" },
+    { "weekday": 5, "label": "周五", "primary": { "type": "ballOptional" }, "fallback": { "type": "cardio", "id": "zone2-40" } },
+    { "weekday": 6, "label": "周六", "primary": { "type": "day", "id": "push" } },
+    { "weekday": 0, "label": "周日", "primary": { "type": "rest" }, "ballOptional": true, "note": "休息 / 散步；一周第三次球放这里" }
+  ],
+  "rules": [
+    "打球最多一周 3 次，第三次放周日（推日后一天可以打）",
+    "腿日和球之间至少隔 1 天：腿日次日可以打轻松球，不打硬战单打",
+    "球的次日不排腿日",
+    "推日和上肢B之间至少隔 1 天",
+    "一周打 3 次球：去掉周四上肢B，只留 30 分钟二区",
+    "连续两周主要动作次数下降 / 静息心率比平时高 5 以上：那周去掉上肢B和一次二区",
+    "二区不要放在重腿日前一天；用骑行或坡度走，不用跑步",
+    "任何力量训练与同一肌群的下一次训练之间至少隔 48 小时"
+  ],
+  "overrides": [
+    { "date": "2026-10-24", "plan": { "type": "day", "id": "pull" } },
+    { "date": "2026-10-25", "plan": { "type": "cardio", "id": "zone2-45" } },
+    { "date": "2026-10-26", "plan": { "type": "day", "id": "legs" } },
+    { "date": "2026-10-27", "plan": { "type": "ballOptional" }, "fallback": { "type": "cardio", "id": "zone2-30" } },
+    { "date": "2026-10-28", "plan": { "type": "day", "id": "push" } },
+    { "date": "2026-10-29", "plan": { "type": "day", "id": "pull" }, "note": "轻一档：只做引体、划船、面拉各 3 组" },
+    { "date": "2026-10-30", "plan": { "type": "ballOptional" }, "fallback": { "type": "cardio", "id": "zone2-40" } },
+    { "date": "2026-10-31", "plan": { "type": "rest" }, "note": "周五没打球可改成腿日" },
+    { "date": "2026-11-01", "plan": { "type": "day", "id": "push" } }
+  ]
+}
