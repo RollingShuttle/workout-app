@@ -42,7 +42,6 @@ function renderExerciseList(template) {
       el('span', { class: 'ex-name', text: ex.name }),
       el('span', { class: 'ex-scheme', text: formatSetsReps(ex) }),
       el('span', { class: 'ex-load', text: formatLoad(ex.load) }),
-      ex.notes ? el('span', { class: 'ex-notes', text: ex.notes }) : null,
     ])
   );
   const list = el('ul', { class: 'exercise-list', role: 'list' }, items);

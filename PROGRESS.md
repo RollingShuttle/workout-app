@@ -20,13 +20,14 @@
 
 - 2026-10-23 · 用户决定：zone2-45 模板名改为"二区 45 分钟"（durationMin 45 不变） · 首页 10/25 标题随之变为"二区 45 分钟" · 训练模式
 
+- 2026-10-23 · 用户决定：首页动作清单不显示 exercise.notes，只留 动作 · 重量 · 组数×次数；sw.js CACHE 升 v4 · 10/24 拉日页无备注行 · 训练模式
+
 ## 已知问题
 
 - SW 更新：壳文件（app.js / schedule.js / style.css / index.html）是 stale-while-revalidate，改了代码要第二次打开才生效，而且"有新版本"提示只在 sw.js 本身变化时出现（比如改 CACHE 名）。所以每次部署都改一下 sw.js 的 CACHE 名最稳妥。training-plan.json 是网络优先，改 overrides 当次打开就生效。
 - 本机验收统一用 http://localhost:8080，不要混用 127.0.0.1：两个源各有一套 SW 和缓存，混用会看到旧代码。
 - .claude/launch.json 用的是 `python`；Mac 上如果只有 `python3`，需要改 runtimeExecutable。
 - 尚未在真机 iPhone 验证"添加到主屏幕"和图标显示，要等部署到 GitHub Pages 后做。
-- 首页动作预览多显示了 exercise.notes（规格 3.1 只要求 动作 · 重量 · 组数×次数）。觉得挤可以去掉。
 
 ## 以后再说
 
