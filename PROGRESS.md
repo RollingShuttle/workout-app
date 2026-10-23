@@ -9,6 +9,8 @@
 
 ## 下一步
 
+- **【中断于 2026-10-23，未验收】草稿自动保存（IndexedDB）代码已写完但还没在浏览器里跑过**：db.js（新，IndexedDB 封装：sessions / settings 两张表，findDraft 按 test 标记区分测试模式草稿）、workout.js 加 finishSession（status 映射成 done/partial/skipped）、train-view.js 加"结束训练"按钮、app.js（启动时 findDraft 恢复草稿；每次 update 后 persistSession：有记录 put / 没记录 delete；有不是今天的草稿时首页显示"有未完成的训练"卡片并隐藏"开始训练"，训练页显示草稿本身；finishTraining 确认后填 finishedAt 保存；requestPersistentStorage）、sw.js v7 加 db.js。新会话第一件事：起服务器，用 `?date=2026-10-28&r=N#train` 做两组 → 换 r 重载 → 记录还在；撤到 0 组 → 草稿被删；换 `?date=2026-10-29` → 首页出现未完成卡片 → 继续 → 结束训练 → 保存且首页恢复正常；真实日期 `/?r=N` 看不到测试草稿；无控制台错误。通过后再做审查、改 PROGRESS 日志、提交。
+
 - Phase 1 第四项：组间秒表（完成一组后从 0 正计时，到 restSeconds 变色，只有"重置"按钮；基于 lastSetCompletedAt 时间戳，visibilitychange 时重算）。验收：完成一组后锁屏 2 分钟再解锁显示约 02:00；切 App 再回来数值正确；刷新后继续（这一条要等草稿保存）。实现提示：重置按钮要用单独的 restStartedAt，不要改 lastSetCompletedAt，否则下一组的 restTakenSeconds 会错。
 - Phase 1 第五项：本机保存本次训练（IndexedDB 草稿自动保存，关掉再打开能续）。实现提示：恢复草稿要按草稿自己的 date/templateId 找模板并显示"继续训练"，不要按今天的日期匹配，否则跨午夜的草稿永远找不到；保存时把 pending/active/done 映射成 spec 2.3 的 done/partial/skipped。
 - 训练模式补齐（§3.2 次要按钮，Phase 1 验收不要求，顺序由用户定）：换替代动作、跳过这个动作、结束动作（已达 min 组时可用）、结束训练汇总。

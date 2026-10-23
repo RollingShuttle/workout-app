@@ -58,7 +58,7 @@ function renderRow(entry, template, handlers) {
   return el('li', { class: `train-row train-row-${entry.status}`, 'data-exercise': ex.id }, children);
 }
 
-export function renderTrain(root, { session, template, dateText, onSelect, onCompleteSet, onUndo, onExtra, onBack }) {
+export function renderTrain(root, { session, template, dateText, onSelect, onCompleteSet, onUndo, onExtra, onBack, onFinish }) {
   const sum = summarize(session, template);
   const handlers = { onSelect, onCompleteSet, onUndo, onExtra };
   root.replaceChildren(
@@ -76,7 +76,10 @@ export function renderTrain(root, { session, template, dateText, onSelect, onCom
       'ul',
       { class: 'train-list', role: 'list' },
       orderedEntries(session).map((entry) => renderRow(entry, template, handlers))
-    )
+    ),
+    el('div', { class: 'train-footer' }, [
+      el('button', { class: 'btn-secondary btn-finish', type: 'button', onclick: onFinish }, '结束训练'),
+    ])
   );
 }
 

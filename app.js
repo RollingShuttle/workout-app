@@ -1,12 +1,30 @@
 // 训练追踪 PWA — 入口。首页显示今天的安排；#train 进入训练模式。
 import { el } from './dom.js';
-import { resolveDay, parseDateKey, toDateKey, formatLoad, formatSetsReps, formatCardio } from './schedule.js';
-import { createSession, selectExercise, completeSet, undoLastSet, addExtraSet } from './workout.js';
+import {
+  resolveDay,
+  parseDateKey,
+  toDateKey,
+  formatLoad,
+  formatSetsReps,
+  formatCardio,
+  WEEKDAY_LABELS,
+} from './schedule.js';
+import {
+  createSession,
+  selectExercise,
+  completeSet,
+  undoLastSet,
+  addExtraSet,
+  finishSession,
+  summarize,
+} from './workout.js';
 import { renderTrain, renderTrainUnavailable } from './train-view.js';
+import { putSession, deleteSession, findDraft, requestPersistentStorage } from './db.js';
 
-const APP_VERSION = '0.3.0';
+const APP_VERSION = '0.4.0';
 
-// 全局状态：计划、当前"今天"、进行中的训练（本步骤只存内存，刷新即丢；草稿保存是下一步）
+// 全局状态：计划、当前"今天"、进行中的训练。
+// session 每次变化都写进 IndexedDB（有记录时 put，没记录时 delete），启动时从草稿恢复。
 const state = { plan: null, date: null, isTest: false, session: null };
 
 function setStatus(text) {
@@ -27,8 +45,12 @@ async function loadPlan() {
   return res.json();
 }
 
-function formatDateText(date, day) {
-  return `${date.getMonth() + 1}月${date.getDate()}日 · ${day.weekdayLabel}`;
+function formatDateText(date) {
+  return `${date.getMonth() + 1}月${date.getDate()}日 · ${WEEKDAY_LABELS[date.getDay()]}`;
+}
+
+function findTemplate(id) {
+  return (state.plan.dayTemplates || []).find((t) => t.id === id) || null;
 }
 
 function currentView() {
@@ -36,11 +58,31 @@ function currentView() {
 }
 
 function sessionMatches(session, day) {
-  return Boolean(session && day.day && session.templateId === day.day.id && session.date === day.dateKey);
+  return Boolean(
+    session && !session.finishedAt && day.day && session.templateId === day.day.id && session.date === day.dateKey
+  );
 }
 
 function sessionHasSets(session) {
   return Boolean(session && session.entries.some((e) => e.sets.length > 0));
+}
+
+// 有记录、还没结束的训练 = 草稿；不管是不是今天的，都先把它做完或结束
+function activeDraft() {
+  const s = state.session;
+  return s && !s.finishedAt && sessionHasSets(s) ? s : null;
+}
+
+function newSession(template, dateKey) {
+  const session = createSession(template, dateKey, Date.now());
+  if (state.isTest) session.test = true; // ?date= 测试模式建的训练单独标记，不和真实训练混
+  return session;
+}
+
+// 写入 IndexedDB：有记录就保存，撤到一组都没有就删掉草稿
+function persistSession(session) {
+  const op = sessionHasSets(session) || session.finishedAt ? putSession(session) : deleteSession(session.id);
+  op.catch((err) => setStatus(`保存失败：${err.message}`));
 }
 
 /* ---------- 首页 ---------- */
@@ -102,14 +144,28 @@ function renderBody(day, plan) {
   }
 }
 
+function renderDraftCard(draft) {
+  const template = findTemplate(draft.templateId);
+  const d = parseDateKey(draft.date);
+  const sum = template ? summarize(draft, template) : { totalSets: 0 };
+  return el('section', { class: 'card draft-card' }, [
+    el('div', { class: 'row-label', text: '有未完成的训练' }),
+    el('div', { text: `${d ? formatDateText(d) : draft.date} · ${template ? template.name : draft.templateId} · ${sum.totalSets} 组` }),
+    el('div', { class: 'ex-notes', text: '先接着练完或结束它，再开始今天的训练' }),
+    el('button', { class: 'btn-primary', type: 'button', onclick: () => { location.hash = '#train'; } }, '继续训练'),
+  ]);
+}
+
 function renderHome(root, day) {
-  const { plan, date, isTest, session } = state;
-  const resume = day.kind === 'strength' && sessionMatches(session, day) && sessionHasSets(session);
+  const { plan, date, isTest } = state;
+  const draft = activeDraft();
+  const draftIsToday = Boolean(draft && sessionMatches(draft, day));
+  const resume = draftIsToday;
 
   root.replaceChildren(
     el('header', { class: 'today-header' }, [
       el('div', { class: 'today-date' }, [
-        el('span', { text: formatDateText(date, day) }),
+        el('span', { text: formatDateText(date) }),
         isTest ? el('span', { class: 'tag tag-test', text: '测试日期' }) : null,
         day.source === 'override' ? el('span', { class: 'tag', text: '调课' }) : null,
       ]),
@@ -123,7 +179,8 @@ function renderHome(root, day) {
       renderBody(day, plan),
       ...day.problems.map((p) => el('p', { class: 'problem', text: p })),
     ]),
-    day.kind === 'strength'
+    draft && !draftIsToday ? renderDraftCard(draft) : null,
+    day.kind === 'strength' && !(draft && !draftIsToday)
       ? el('div', { class: 'home-actions' }, [
           el(
             'button',
@@ -138,35 +195,72 @@ function renderHome(root, day) {
 /* ---------- 训练模式 ---------- */
 
 function goHome() {
-  if (sessionHasSets(state.session) && !window.confirm('返回首页？这次训练的记录会保留，再点"继续训练"可以接着练。')) {
+  if (sessionHasSets(state.session) && !window.confirm('返回首页？记录已自动保存，再点"继续训练"可以接着练。')) {
     return;
   }
   location.hash = '';
 }
 
-function renderTrainView(root, day) {
-  if (day.kind !== 'strength') {
-    renderTrainUnavailable(root, { title: day.title, onBack: () => { location.hash = ''; } });
+// 结束训练：有记录 → 确认后填 finishedAt 保存；没记录 → 确认后丢弃
+function finishTraining(template) {
+  const session = state.session;
+  if (!session) return;
+  const now = Date.now();
+  if (!sessionHasSets(session)) {
+    if (!window.confirm('还没有记录任何一组，直接退出训练？')) return;
+    persistSession(session);
+    state.session = null;
+    location.hash = '';
     return;
   }
-  const template = day.day;
-  if (!sessionMatches(state.session, day)) {
-    state.session = createSession(template, day.dateKey, Date.now());
+  const { totalSets } = summarize(session, template);
+  const minutes = Math.max(1, Math.round((now - session.startedAt) / 60000));
+  if (!window.confirm(`结束训练？共 ${totalSets} 组，用时 ${minutes} 分钟。`)) return;
+  persistSession(finishSession(session, now));
+  state.session = null;
+  location.hash = '';
+}
+
+function renderTrainView(root, day) {
+  const draft = activeDraft();
+  let template;
+  let dateText;
+  if (draft) {
+    // 有未完成的草稿就显示草稿（哪怕不是今天的），直到做完或结束
+    template = findTemplate(draft.templateId);
+    if (!template) {
+      renderTrainUnavailable(root, { title: `找不到训练日模板 ${draft.templateId}`, onBack: () => { location.hash = ''; } });
+      return;
+    }
+    const d = parseDateKey(draft.date);
+    dateText = d ? formatDateText(d) : draft.date;
+  } else {
+    if (day.kind !== 'strength') {
+      renderTrainUnavailable(root, { title: day.title, onBack: () => { location.hash = ''; } });
+      return;
+    }
+    template = day.day;
+    if (!sessionMatches(state.session, day)) {
+      state.session = newSession(template, day.dateKey);
+    }
+    dateText = formatDateText(state.date);
   }
   const update = (next) => {
     if (next === state.session) return;
     state.session = next;
+    persistSession(next);
     render();
   };
   renderTrain(root, {
     session: state.session,
     template,
-    dateText: formatDateText(state.date, day),
+    dateText,
     onSelect: (id) => update(selectExercise(state.session, template, id)),
     onCompleteSet: (id) => update(completeSet(state.session, template, id, Date.now())),
     onUndo: (id) => update(undoLastSet(state.session, template, id)),
     onExtra: (id) => update(addExtraSet(state.session, template, id)),
     onBack: goHome,
+    onFinish: () => finishTraining(template),
   });
 }
 
@@ -239,6 +333,12 @@ async function main() {
     root.replaceChildren(el('p', { class: 'problem', text: `读取训练计划失败：${err.message}` }));
     return;
   }
+  try {
+    state.session = await findDraft({ test: isTest });
+  } catch (err) {
+    setStatus(`读取草稿失败：${err.message}`);
+  }
+  requestPersistentStorage(); // 申请持久存储，结果不影响使用
   render();
   if (!isTest) watchDayChange();
   window.addEventListener('hashchange', render);

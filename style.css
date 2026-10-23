@@ -328,3 +328,21 @@ body {
   flex-direction: row;
   padding-bottom: 12px;
 }
+
+.train-footer {
+  padding: 8px 0 24px;
+}
+
+.btn-finish {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+}
+
+.draft-card {
+  padding: 12px 16px 16px;
+}
+
+.draft-card .btn-primary {
+  margin-top: 12px;
+}

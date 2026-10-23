@@ -165,3 +165,16 @@ export function summarize(session, template) {
   }
   return { totalSets, doneExercises, totalExercises: session.entries.length };
 }
+
+// 结束训练：填 finishedAt，把运行态 status 映射成 spec 2.3 的 done / partial / skipped
+export function finishSession(session, now) {
+  return {
+    ...session,
+    finishedAt: now,
+    activeExerciseId: null,
+    entries: session.entries.map((e) => ({
+      ...e,
+      status: e.status === 'done' ? 'done' : e.sets.length > 0 ? 'partial' : 'skipped',
+    })),
+  };
+}
