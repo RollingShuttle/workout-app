@@ -76,7 +76,7 @@
   "cardioTemplates": [
     { "id": "zone2-30", "name": "二区 30 分钟", "modality": [ "坡度快走", "骑行" ], "durationMin": 30, "heartRate": { "min": 120, "max": 140, "cap": 145 } },
     { "id": "zone2-40", "name": "二区 40 分钟", "modality": [ "坡度快走", "骑行" ], "durationMin": 40, "heartRate": { "min": 120, "max": 140, "cap": 145 } },
-    { "id": "zone2-45", "name": "二区 40-45 分钟", "modality": [ "坡度快走", "骑行" ], "durationMin": 45, "heartRate": { "min": 120, "max": 140, "cap": 145 } },
+    { "id": "zone2-45", "name": "二区 45 分钟", "modality": [ "坡度快走", "骑行" ], "durationMin": 45, "heartRate": { "min": 120, "max": 140, "cap": 145 } },
     { "id": "ball", "name": "羽毛球", "notes": "记录时长、平均心率、Zone 3 以上时间；平均 ≤140 且 Zone3+ <15 分钟算中强度" },
     { "id": "walk", "name": "散步", "durationMin": 30 }
   ],
