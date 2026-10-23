@@ -150,7 +150,7 @@ export function formatLoad(load) {
   return `${load.value} ${load.unit || 'lb'}`;
 }
 
-function formatRange(range) {
+export function formatRange(range) {
   if (!range) return '?';
   const { min, max } = range;
   if (min == null && max == null) return '?';

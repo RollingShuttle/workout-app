@@ -5,7 +5,7 @@
   --muted: #6e6e73;
   --card: #ffffff;
   --line: rgba(60, 60, 67, 0.18);
-  --accent: #0a84ff;
+  --accent: #007aff; /* iOS systemBlue 浅色 */
   --warn: #ff9f0a;
   --warn-text: #b24d00; /* 浅色背景上可读的橙色文字 */
   --danger: #c41e1e;
@@ -18,6 +18,7 @@
     --muted: #8e8e93;
     --card: #1c1c1e;
     --line: rgba(84, 84, 88, 0.6);
+    --accent: #0a84ff; /* iOS systemBlue 深色 */
     --warn-text: #ff9f0a;
     --danger: #ff453a;
   }
@@ -168,4 +169,162 @@ body {
 .app-footer p {
   margin: 0;
   font-size: 13px;
+}
+
+/* 按钮 */
+.btn-primary {
+  display: block;
+  width: 100%;
+  min-height: 56px;
+  margin: 0;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--accent);
+  color: #ffffff;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.btn-primary:active {
+  opacity: 0.8;
+}
+
+.btn-secondary {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 16px;
+}
+
+.btn-secondary:active {
+  opacity: 0.7;
+}
+
+.home-actions {
+  margin: 16px 0;
+}
+
+/* 训练模式 */
+.train-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0 12px;
+  background: var(--bg);
+}
+
+.btn-back {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 17px;
+}
+
+.train-name {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.train-sub {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.train-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.train-row {
+  margin: 0 0 10px;
+  padding: 0 14px;
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.train-row-active {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.train-row-done {
+  background: transparent;
+  border: 1px solid var(--line);
+}
+
+/* 完成的动作用灰色而不是半透明，保证文字仍可读 */
+.train-row-done .train-row-head {
+  color: var(--muted);
+}
+
+.train-row-done .train-row-name {
+  font-weight: 400;
+}
+
+.train-row-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 12px;
+  align-items: baseline;
+  width: 100%;
+  min-height: 56px;
+  padding: 12px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.train-row-name {
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.train-row-count {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.train-row-active .train-row-count {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.train-row-meta {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.train-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 0 14px;
+}
+
+.train-actions .btn-secondary {
+  align-self: flex-start;
+}
+
+.train-actions-done {
+  flex-direction: row;
+  padding-bottom: 12px;
 }
