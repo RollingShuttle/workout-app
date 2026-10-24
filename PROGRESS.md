@@ -10,6 +10,13 @@
 - 2026-10-24：Phase 1 第四项完成——组间秒表（训练页顶部固定一条：大号正计时、参考休息时长和动作名、到点变绿、只有"重置"）。Phase 1 的功能项至此全部完成，剩真机验收和部署。
 - 2026-10-24：训练模式次要按钮完成——换替代动作（底部选单）、跳过这个动作、结束动作（做满 min 组后可用）。
 
+## 部署
+
+- 线上地址：https://rollingshuttle.github.io/workout-app/ （GitHub Pages，仓库 https://github.com/RollingShuttle/workout-app ，公开，main 分支根目录，有 .nojekyll）。
+- 发布新版本 = `git push origin main`，Pages 约 1 分钟后生效；Pages 的 HTTP 缓存 max-age=600，所以手机最多再晚 10 分钟拿到。每次发布前把 sw.js 的 CACHE 名升一级，手机端第二次打开拿到新代码。
+- GitHub CLI 没有系统安装（winget 需要提权，没人在电脑前点）。用的是免安装版 gh 2.103.2，解压在本次会话的临时目录 scratchpad/gh-dl/bin/gh.exe（会话结束后可能被清理）；已 `gh auth login`（账号 RollingShuttle，token 存在系统钥匙串）并 `gh auth setup-git`，这一步在全局 git 配置里加了指向临时目录 gh.exe 的凭据 helper。想长期稳定推送：在电脑前用管理员权限 `winget install GitHub.cli`，再跑一次 `gh auth setup-git`。
+- iPhone 安装：Safari 打开上面的地址 → 分享 → 添加到主屏幕。主屏幕 App 和 Safari 标签页是两套独立存储，记录只在主屏幕 App 里。
+
 ## 下一步
 
 
