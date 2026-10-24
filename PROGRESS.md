@@ -9,18 +9,18 @@
 - 2026-10-24：Phase 1 第五项完成——训练草稿自动保存到 IndexedDB（db.js），每点一下就写库，关掉再打开能续；加了最小的"结束训练"。首页有别天的未完成训练时显示卡片（继续训练 / 结束并保存）。
 - 2026-10-24：Phase 1 第四项完成——组间秒表（训练页顶部固定一条：大号正计时、参考休息时长和动作名、到点变绿、只有"重置"）。Phase 1 的功能项至此全部完成，剩真机验收和部署。
 - 2026-10-24：训练模式次要按钮完成——换替代动作（底部选单）、跳过这个动作、结束动作（做满 min 组后可用）。
+- 2026-10-24：外观定稿（浅色 iOS 原生 / 深色健身房）；部署到 GitHub Pages；**iPhone 真机验收 Phase 1 全部通过**（用户确认）。Phase 1 完成。
 
 ## 部署
 
 - 线上地址：https://rollingshuttle.github.io/workout-app/ （GitHub Pages，仓库 https://github.com/RollingShuttle/workout-app ，公开，main 分支根目录，有 .nojekyll）。
 - 发布新版本 = `git push origin main`，Pages 约 1 分钟后生效；Pages 的 HTTP 缓存 max-age=600，所以手机最多再晚 10 分钟拿到。每次发布前把 sw.js 的 CACHE 名升一级，手机端第二次打开拿到新代码。
-- GitHub CLI 没有系统安装（winget 需要提权，没人在电脑前点）。用的是免安装版 gh 2.103.2，解压在本次会话的临时目录 scratchpad/gh-dl/bin/gh.exe（会话结束后可能被清理）；已 `gh auth login`（账号 RollingShuttle，token 存在系统钥匙串）并 `gh auth setup-git`，这一步在全局 git 配置里加了指向临时目录 gh.exe 的凭据 helper。想长期稳定推送：在电脑前用管理员权限 `winget install GitHub.cli`，再跑一次 `gh auth setup-git`。
+- GitHub CLI 已正式安装（winget，C:/Program Files/GitHub CLI/gh.exe，2.103.2），已 `gh auth login`（账号 RollingShuttle，token 在系统钥匙串）并 `gh auth setup-git`，git push 走它的凭据，不弹浏览器。
 - iPhone 安装：Safari 打开上面的地址 → 分享 → 添加到主屏幕。主屏幕 App 和 Safari 标签页是两套独立存储，记录只在主屏幕 App 里。
 
 ## 下一步
 
 
-- 部署到 GitHub Pages 并在 iPhone 真机验收 Phase 1 全部项（添加到主屏幕、图标、离线打开、首页日期、训练模式、秒表锁屏 2 分钟、草稿关 App 再开）。部署前把 sw.js 的 CACHE 名再升一级。
 - 结束训练的汇总页（每个动作的最佳组要等 Phase 2 的重量/次数输入）。
 - 首页 §3.1 还没做的部分（Phase 1 验收不要求，顺序由用户定）：本周 7 天小条、规则提示折叠、"今天打球 / 不打"按钮和本周球次数（Phase 3）。
 - Phase 2：每组重量 / 次数输入、上次数据预填、历史列表、动作折线、进阶 / 退阶提示。
@@ -39,6 +39,8 @@
 
 - 2026-10-24 · 外观定稿：用户选"浅色 = iOS 原生风（A）、深色 = 健身房高对比风（B）"，跟随系统切换。style.css 把两套差异做成 token（--accent/--accent-fg、--radius-card/btn/btn-sm/tag/sheet、--card-border、--active-ring/--active-bg、--title-size/weight/bar、--num-weight、--btn-weight、--btn-secondary-fg/border、--rest-size/weight），浅色取 A 值、深色取 B 值，组件只引用 token；删掉 themes/ 和 index.html 的 ?theme= 钩子；sw.js v12 · 验收通过：面板切浅色 → 蓝 #007aff、14px 圆角、按钮白字 600；切深色 → 荧光绿 #c8f53a、8px 角、按钮黑字 800、秒表 48px、标题 40px/800 带下划线、行边框绿；无横向溢出、无控制台错误；无头 Chrome 截图浅/深 × 首页/训练页四张已发用户 · 部署 / 真机验收
 
+- 2026-10-24 · 部署：建公开仓库 RollingShuttle/workout-app，推 main，开 Pages（main 根目录，.nojekyll）；线上验证 SW 作用域 /workout-app/、壳文件全缓存、首页正确 · 用户 iPhone 真机验收 Phase 1 清单全部通过 · Phase 2
+
 ## 已知问题
 - 2026-10-24 · 训练模式次要按钮：workout.js（entry 加 endedEarly；effectiveExercise 按替代动作取名字和重量，替代动作没写 load 按"首次做时填"不沿用原重量；每组记 usedAlternate 方便中途切换后区分；canEndExercise：做满 min 且未到 max；endExercise / skipExercise / unskipExercise / setAlternate；addExtraSet 对提前结束的动作只是回到进行中不加目标；取消再加一组清 endedEarly；sessionHasInput：记了组或换替代/跳过/提前结束都算有输入，草稿保存、返回确认、跨天保护、首页草稿判断都用它；orderedEntries 把完成和跳过都下沉；finishSession：提前结束算 done、跳过无组算 skipped、有组算 partial）、train-view.js（进行中行加 train-secondary 一行：撤销 / 结束动作（只在 min<max 的动作显示，未达 min 禁用）/ 跳过 / 换替代动作（有 alternates 才显示）；完成行"继续这个动作"或"再加一组"；跳过行显示"已跳过"只有"取消跳过"；替代动作行显示"替代 原名"；底部选单：原动作 + 替代动作（重量未填就写明）+ 取消，aria-modal、拿焦点、Escape 关闭、点背景关闭、背后不滚动；秒表条动作名用替代名）、app.js（onEnd / onSkip / onUnskip / onPickAlternate；state.picker 离开训练页清掉）、style.css、sw.js v11 · 验收通过：卧推换成斜下胸推机器后行名、"替代 卧推 · 45 lb"、记录 weight 45 和 set.usedAlternate；换回原动作；中途切换后每组各自带标记；Escape / 背景 / 取消都能关；离开训练页再进不弹选单；跳过的行变灰下沉"已跳过"、取消跳过回原位；三头 2–3 组：结束动作未满 2 组禁用，2 组后结束 → 2/3 完成 + "继续这个动作"，继续后目标不变，3/3 后再加一组 → 3/4 时结束动作禁用，取消再加一组回 3/3 完成态；只跳过没做组也写进草稿且返回时确认；结束训练后状态 done / partial / skipped；无控制台错误。两视角审查 11 条（另两视角和反证因会话上限失败），11 条全部按代码确认并修复 · 三版外观风格
 
@@ -50,7 +52,7 @@
 - SW 更新：壳文件（app.js / schedule.js / style.css / index.html 等）是 stale-while-revalidate，改了代码要第二次打开才生效，而且"有新版本"提示只在 sw.js 本身变化时出现（比如改 CACHE 名）。所以每次部署都改一下 sw.js 的 CACHE 名最稳妥。training-plan.json 是网络优先，改 overrides 当次打开就生效。注册时已用 updateViaCache:'none'，检查 sw.js 更新不走 HTTP 缓存。
 - 本机验收统一用 http://localhost:8080，不要混用 127.0.0.1：两个源各有一套 SW 和缓存，混用会看到旧代码。另外导航到完全相同的 URL（含 #train）不会重新加载页面，要换个查询参数（如 &r=2）才能强制重载。
 - .claude/launch.json 用的是 `python`；Mac 上如果只有 `python3`，需要改 runtimeExecutable。
-- 尚未在真机 iPhone 验证"添加到主屏幕"、图标、IndexedDB 持久化、navigator.storage.persist()（桌面测试浏览器里 persisted() 返回 false，iOS 主屏幕 App 一般会给）、秒表锁屏后的表现、sticky 页头在刘海机上的位置。要等部署到 GitHub Pages 后做。
+- 真机已验收通过（2026-10-24）。navigator.storage.persist() 在 iOS 上是否批准没有专门查看，以后做设置页时显示出来。
 - 训练页一个动作做完下沉时列表会整体上移，iOS Safari 没有滚动锚定，手指位置下面的内容会变。先观察真机感受再决定要不要做滚动补偿。
 - 同一浏览器里同时开两个标签页（同源、同一测试/真实模式）会互相覆盖草稿：persistSession 整条 put、启动时只读一次 findDraft，后写的赢。iPhone 主屏幕 App 单实例、和 Safari 存储隔离，碰不到；本机验收只开一个标签页。以后要做可以在页面重新可见时重读 findDraft。
 - 测试模式记录：?date= 建的训练带 test:true，和真实记录在同一张 sessions 表里。db.js 只导出 listSessions / findDraft（都按 test 过滤），以后历史列表、导出、备份提醒计数一律从 listSessions 读，不要再加全表读取。
