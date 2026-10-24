@@ -38,15 +38,10 @@ export function targetSets(exercise, entry) {
   return base + (entry ? entry.extraSets : 0);
 }
 
-// 已完成组数：每侧动作左右各一次才算一组
+// 已完成组数。每侧动作也是一次"完成一组"算一组（用户决定：做完两侧再按，只要一个计时；
+// 与 spec 3.2"左右各一次算一组"不同，见 PROGRESS.md 2026-10-24）
 export function completedSets(entry, exercise) {
-  return exercise.perSide ? Math.floor(entry.sets.length / 2) : entry.sets.length;
-}
-
-// 每侧动作下一次该做哪边；非每侧动作返回 null
-export function nextSide(entry, exercise) {
-  if (!exercise.perSide) return null;
-  return entry.sets.length % 2 === 0 ? 'L' : 'R';
+  return entry.sets.length;
 }
 
 export function isDone(entry, exercise) {
@@ -100,15 +95,13 @@ export function completeSet(session, template, id, now) {
   const exercise = findExercise(template, id);
   if (!entry || !exercise || entry.status === 'done') return session;
 
-  const side = nextSide(entry, exercise);
-  const setNo = exercise.perSide ? Math.floor(entry.sets.length / 2) + 1 : entry.sets.length + 1;
+  const setNo = entry.sets.length + 1;
   // 系统时钟被改到过去（now 早于上一组）时记 null，不要记成 0
   const restTakenSeconds =
     session.lastSetCompletedAt == null || now < session.lastSetCompletedAt
       ? null
       : Math.round((now - session.lastSetCompletedAt) / 1000);
   const set = { setNo, weight: plannedWeight(exercise), reps: null, completedAt: now, restTakenSeconds };
-  if (side) set.side = side;
 
   const updated = { ...entry, sets: [...entry.sets, set] };
   const done = isDone(updated, exercise);
@@ -127,7 +120,6 @@ export function completeSet(session, template, id, now) {
 // "再加一组"之后、那一组还没开始做：此时撤销 = 取消加组，回到完成态，不删真实记录
 export function canCancelExtraSet(entry, exercise) {
   if (!entry || entry.extraSets <= 0) return false;
-  if (exercise.perSide && entry.sets.length % 2 !== 0) return false; // 左侧已做、右侧没做，不算"还没开始"
   return completedSets(entry, exercise) === targetSets(exercise, entry) - 1;
 }
 

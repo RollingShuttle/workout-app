@@ -5,7 +5,6 @@ import {
   findExercise,
   targetSets,
   completedSets,
-  nextSide,
   orderedEntries,
   summarize,
   canCancelExtraSet,
@@ -20,14 +19,9 @@ function renderRow(entry, template, handlers) {
   const done = entry.status === 'done';
   const active = entry.status === 'active';
   const count = `${completedSets(entry, ex)}/${targetSets(ex, entry)}`;
-  const side = nextSide(entry, ex);
+  // 每侧动作：两侧都做完再按一次"完成一组"，所以这里只提示"每侧"，不分左右
   const meta = [formatLoad(ex.load), `${formatRange(ex.reps)} 次`, ex.perSide ? '每侧' : null].filter(Boolean).join(' · ');
-  // 每侧动作做完左侧、还没做右侧时提示半组；撤销按钮说清撤的是哪半边
-  const countText = side === 'R' ? `${count} · 左侧已做` : count;
-  const last = entry.sets[entry.sets.length - 1];
-  const undoLabel = canCancelExtraSet(entry, ex)
-    ? '取消再加一组'
-    : last && last.side === 'L' ? '撤销左侧' : last && last.side === 'R' ? '撤销右侧' : '撤销最后一组';
+  const undoLabel = canCancelExtraSet(entry, ex) ? '取消再加一组' : '撤销最后一组';
 
   const head = el(
     'button',
@@ -40,17 +34,16 @@ function renderRow(entry, template, handlers) {
     },
     [
       el('span', { class: 'train-row-name', text: done ? `✓ ${ex.name}` : ex.name }),
-      el('span', { class: 'train-row-count', text: countText }),
+      el('span', { class: 'train-row-count', text: count }),
       el('span', { class: 'train-row-meta', text: meta }),
     ]
   );
 
   const children = [head];
   if (active) {
-    const label = side === 'L' ? '完成左侧' : side === 'R' ? '完成右侧' : '完成一组';
     children.push(
       el('div', { class: 'train-actions' }, [
-        el('button', { class: 'btn-primary', type: 'button', onclick: () => handlers.onCompleteSet(ex.id) }, label),
+        el('button', { class: 'btn-primary', type: 'button', onclick: () => handlers.onCompleteSet(ex.id) }, '完成一组'),
         entry.sets.length > 0 || canCancelExtraSet(entry, ex)
           ? el('button', { class: 'btn-secondary', type: 'button', onclick: () => handlers.onUndo(ex.id) }, undoLabel)
           : null,
@@ -67,9 +60,11 @@ function renderRow(entry, template, handlers) {
   return el('li', { class: `train-row train-row-${entry.status}`, 'data-exercise': ex.id }, children);
 }
 
-// mm:ss；分钟不封顶（忘了结束会一直涨，但那是真实时间）
+// mm:ss；封顶 99:59（用户决定），再久也只显示 99:59
+export const CLOCK_CAP_SECONDS = 99 * 60 + 59;
+
 export function formatClock(ms) {
-  const total = Math.max(0, Math.floor(ms / 1000));
+  const total = Math.min(CLOCK_CAP_SECONDS, Math.max(0, Math.floor(ms / 1000)));
   const m = Math.floor(total / 60);
   const sec = total % 60;
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
