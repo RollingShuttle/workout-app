@@ -14,3 +14,8 @@ export function el(tag, attrs = {}, children = []) {
   }
   return node;
 }
+
+// root.replaceChildren(null) 会把 null 变成字面量文本，这里统一过滤
+export function replaceChildren(root, children) {
+  root.replaceChildren(...[].concat(children).filter((c) => c != null && c !== false));
+}

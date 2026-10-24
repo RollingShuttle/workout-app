@@ -1,5 +1,5 @@
 // train-view.js — 训练模式页面。只画 DOM；状态改动通过回调交给 app.js。
-import { el } from './dom.js';
+import { el, replaceChildren } from './dom.js';
 import { formatLoad, formatRange } from './schedule.js';
 import { findExercise, targetSets, completedSets, nextSide, orderedEntries, summarize, canCancelExtraSet } from './workout.js';
 
@@ -58,10 +58,10 @@ function renderRow(entry, template, handlers) {
   return el('li', { class: `train-row train-row-${entry.status}`, 'data-exercise': ex.id }, children);
 }
 
-export function renderTrain(root, { session, template, dateText, onSelect, onCompleteSet, onUndo, onExtra, onBack, onFinish }) {
+export function renderTrain(root, { session, template, dateText, notice, onSelect, onCompleteSet, onUndo, onExtra, onBack, onFinish }) {
   const sum = summarize(session, template);
   const handlers = { onSelect, onCompleteSet, onUndo, onExtra };
-  root.replaceChildren(
+  replaceChildren(root, [
     el('header', { class: 'train-header' }, [
       el('button', { class: 'btn-back', type: 'button', onclick: onBack }, '‹ 返回'),
       el('div', { class: 'train-title' }, [
@@ -72,6 +72,7 @@ export function renderTrain(root, { session, template, dateText, onSelect, onCom
         }),
       ]),
     ]),
+    notice ? el('p', { class: 'problem save-error', text: notice }) : null,
     el(
       'ul',
       { class: 'train-list', role: 'list' },
@@ -79,17 +80,22 @@ export function renderTrain(root, { session, template, dateText, onSelect, onCom
     ),
     el('div', { class: 'train-footer' }, [
       el('button', { class: 'btn-secondary btn-finish', type: 'button', onclick: onFinish }, '结束训练'),
-    ])
-  );
+    ]),
+  ]);
 }
 
-// 今天不是力量训练日时的提示页
-export function renderTrainUnavailable(root, { title, onBack }) {
-  root.replaceChildren(
+// 进不了训练页时的提示：今天不是力量日，或草稿的模板找不到了（此时给一个结束入口，别把人卡死）
+export function renderTrainUnavailable(root, { message, onBack, onFinish }) {
+  replaceChildren(root, [
     el('header', { class: 'train-header' }, [
       el('button', { class: 'btn-back', type: 'button', onclick: onBack }, '‹ 返回'),
       el('h1', { class: 'train-name', text: '训练' }),
     ]),
-    el('p', { class: 'muted', text: `今天的安排是「${title}」，不是力量训练日。` })
-  );
+    el('p', { class: 'muted', text: message }),
+    onFinish
+      ? el('div', { class: 'train-footer' }, [
+          el('button', { class: 'btn-secondary btn-finish', type: 'button', onclick: onFinish }, '结束并保存这次训练'),
+        ])
+      : null,
+  ]);
 }

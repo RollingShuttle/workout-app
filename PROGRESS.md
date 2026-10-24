@@ -6,15 +6,14 @@
 - 2026-10-23：Phase 1 第一项完成——空白 PWA 骨架（index.html / manifest.webmanifest / sw.js / app.js / style.css / icons）。本地用 `python -m http.server 8080` 打开（配置在 .claude/launch.json），Service Worker 已能离线打开页面。
 - 2026-10-23：Phase 1 第二项完成——首页读 training-plan.json，按 overrides → weeklySchedule 显示今天的安排（schedule.js 纯函数 + app.js 渲染）。验收用 `?date=YYYY-MM-DD` 切换"今天"。
 - 2026-10-23：Phase 1 第三项完成——训练模式（workout.js 纯状态逻辑 + train-view.js 渲染 + app.js 的 #train 路由）。训练记录目前只在内存里，刷新即丢，草稿保存是后面的步骤。
+- 2026-10-24：Phase 1 第五项完成——训练草稿自动保存到 IndexedDB（db.js），每点一下就写库，关掉再打开能续；加了最小的"结束训练"。首页有别天的未完成训练时显示卡片（继续训练 / 结束并保存）。
 
 ## 下一步
 
-- **【中断于 2026-10-23，未验收】草稿自动保存（IndexedDB）代码已写完但还没在浏览器里跑过**：db.js（新，IndexedDB 封装：sessions / settings 两张表，findDraft 按 test 标记区分测试模式草稿）、workout.js 加 finishSession（status 映射成 done/partial/skipped）、train-view.js 加"结束训练"按钮、app.js（启动时 findDraft 恢复草稿；每次 update 后 persistSession：有记录 put / 没记录 delete；有不是今天的草稿时首页显示"有未完成的训练"卡片并隐藏"开始训练"，训练页显示草稿本身；finishTraining 确认后填 finishedAt 保存；requestPersistentStorage）、sw.js v7 加 db.js。新会话第一件事：起服务器，用 `?date=2026-10-28&r=N#train` 做两组 → 换 r 重载 → 记录还在；撤到 0 组 → 草稿被删；换 `?date=2026-10-29` → 首页出现未完成卡片 → 继续 → 结束训练 → 保存且首页恢复正常；真实日期 `/?r=N` 看不到测试草稿；无控制台错误。通过后再做审查、改 PROGRESS 日志、提交。
-
-- Phase 1 第四项：组间秒表（完成一组后从 0 正计时，到 restSeconds 变色，只有"重置"按钮；基于 lastSetCompletedAt 时间戳，visibilitychange 时重算）。验收：完成一组后锁屏 2 分钟再解锁显示约 02:00；切 App 再回来数值正确；刷新后继续（这一条要等草稿保存）。实现提示：重置按钮要用单独的 restStartedAt，不要改 lastSetCompletedAt，否则下一组的 restTakenSeconds 会错。
-- Phase 1 第五项：本机保存本次训练（IndexedDB 草稿自动保存，关掉再打开能续）。实现提示：恢复草稿要按草稿自己的 date/templateId 找模板并显示"继续训练"，不要按今天的日期匹配，否则跨午夜的草稿永远找不到；保存时把 pending/active/done 映射成 spec 2.3 的 done/partial/skipped。
-- 训练模式补齐（§3.2 次要按钮，Phase 1 验收不要求，顺序由用户定）：换替代动作、跳过这个动作、结束动作（已达 min 组时可用）、结束训练汇总。
+- Phase 1 第四项：组间秒表（完成一组后从 0 正计时，到 restSeconds 变色，只有"重置"按钮；基于 session.lastSetCompletedAt 时间戳，visibilitychange 时重算，不用 setInterval 累加）。验收：完成一组后锁屏 2 分钟再解锁显示约 02:00；切 App 再回来数值正确；刷新页面后秒表继续（草稿里有时间戳）。实现提示：重置按钮要用单独的 restStartedAt 存进 session，不要改 lastSetCompletedAt，否则下一组的 restTakenSeconds 会错；训练页头部布局连同"完成 x/y 个动作 · n 组"那行一起定。
+- 训练模式补齐（§3.2 次要按钮，Phase 1 验收不要求，顺序由用户定）：换替代动作、跳过这个动作、结束动作（已达 min 组时可用）、结束训练的汇总页（每个动作的最佳组要等 Phase 2 的重量/次数输入）。
 - 首页 §3.1 还没做的部分（Phase 1 验收不要求，顺序由用户定）：本周 7 天小条、规则提示折叠、"今天打球 / 不打"按钮和本周球次数（Phase 3）。
+- 要用户确认的设计决定：有别天的未完成训练时，首页隐藏"开始训练"，只显示"有未完成的训练"卡片（继续训练 / 结束并保存）。规格没写明，按"一次只有一条草稿"做的；如果想允许不处理旧草稿直接开始今天的训练，说一声就改。
 
 ## 日志（每步追加一行：日期 · 做了什么 · 验收结果 · 下一步）
 
@@ -30,14 +29,15 @@
 
 ## 已知问题
 
-- 训练记录只在内存里：刷新页面或 App 被杀掉就没了，要等"本机保存草稿"那一步。跨午夜后回首页，昨天的训练不会显示"继续训练"（session 留在内存里但到不了），草稿保存那一步按草稿自己的日期处理。
-- 训练页一个动作做完下沉时列表会整体上移，iOS Safari 没有滚动锚定，手指位置下面的内容会变。先观察真机感受再决定要不要做滚动补偿。
-- ?date= 测试模式下建的训练用的是真实时钟的时间戳，和真实训练分不开；草稿保存那一步要么不保存测试模式的训练，要么打标记。
-
 - SW 更新：壳文件（app.js / schedule.js / style.css / index.html 等）是 stale-while-revalidate，改了代码要第二次打开才生效，而且"有新版本"提示只在 sw.js 本身变化时出现（比如改 CACHE 名）。所以每次部署都改一下 sw.js 的 CACHE 名最稳妥。training-plan.json 是网络优先，改 overrides 当次打开就生效。注册时已用 updateViaCache:'none'，检查 sw.js 更新不走 HTTP 缓存。
 - 本机验收统一用 http://localhost:8080，不要混用 127.0.0.1：两个源各有一套 SW 和缓存，混用会看到旧代码。另外导航到完全相同的 URL（含 #train）不会重新加载页面，要换个查询参数（如 &r=2）才能强制重载。
 - .claude/launch.json 用的是 `python`；Mac 上如果只有 `python3`，需要改 runtimeExecutable。
-- 尚未在真机 iPhone 验证"添加到主屏幕"和图标显示，要等部署到 GitHub Pages 后做。
+- 尚未在真机 iPhone 验证"添加到主屏幕"、图标、IndexedDB 持久化和 navigator.storage.persist()（桌面测试浏览器里 persisted() 返回 false，iOS 主屏幕 App 一般会给）。要等部署到 GitHub Pages 后做。
+- 训练页一个动作做完下沉时列表会整体上移，iOS Safari 没有滚动锚定，手指位置下面的内容会变。先观察真机感受再决定要不要做滚动补偿。
+- 同一浏览器里同时开两个标签页（同源、同一测试/真实模式）会互相覆盖草稿：persistSession 整条 put、启动时只读一次 findDraft，后写的赢。iPhone 主屏幕 App 单实例、和 Safari 存储隔离，碰不到；本机验收只开一个标签页。以后要做可以在页面重新可见时重读 findDraft。
+- 测试模式记录：?date= 建的训练带 test:true，和真实记录在同一张 sessions 表里。db.js 只导出 listSessions / findDraft（都按 test 过滤），以后历史列表、导出、备份提醒计数一律从 listSessions 读，不要再加全表读取。
+- 保存的记录比 spec 2.3 多 extraSets / activeExerciseId / lastSetCompletedAt / test 四个字段；草稿行的 status 是运行态 pending / active / done，结束训练时才映射成 done / partial / skipped。导出 JSON 时原样导出即可。
+- 跨天续练的草稿（昨天做了几组、今天接着做完再结束）用时 = finishedAt − startedAt 仍会跨天；只有"最后一组之后超过 1 小时才点结束"的情况会按最后一组算。做历史页的时长时再决定要不要按活动时段累加。
 
 ## 以后再说
 

@@ -1,5 +1,5 @@
 // 训练追踪 PWA — 入口。首页显示今天的安排；#train 进入训练模式。
-import { el } from './dom.js';
+import { el, replaceChildren } from './dom.js';
 import {
   resolveDay,
   parseDateKey,
@@ -16,16 +16,18 @@ import {
   undoLastSet,
   addExtraSet,
   finishSession,
+  finishedAtFor,
   summarize,
 } from './workout.js';
 import { renderTrain, renderTrainUnavailable } from './train-view.js';
 import { putSession, deleteSession, findDraft, requestPersistentStorage } from './db.js';
 
 const APP_VERSION = '0.4.0';
+const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
-// 全局状态：计划、当前"今天"、进行中的训练。
+// 全局状态：计划、当前"今天"、进行中的训练、最近一次保存错误（null = 正常）。
 // session 每次变化都写进 IndexedDB（有记录时 put，没记录时 delete），启动时从草稿恢复。
-const state = { plan: null, date: null, isTest: false, session: null };
+const state = { plan: null, date: null, isTest: false, session: null, saveError: null };
 
 function setStatus(text) {
   const node = document.getElementById('status');
@@ -79,10 +81,24 @@ function newSession(template, dateKey) {
   return session;
 }
 
-// 写入 IndexedDB：有记录就保存，撤到一组都没有就删掉草稿
+// 写入 IndexedDB：有记录就保存，撤到一组都没有就删掉草稿。
+// 返回 Promise<boolean>，从不 reject；失败时把错误放进 state.saveError 显示在页面上，成功后清掉。
 function persistSession(session) {
   const op = sessionHasSets(session) || session.finishedAt ? putSession(session) : deleteSession(session.id);
-  op.catch((err) => setStatus(`保存失败：${err.message}`));
+  return op.then(
+    () => {
+      if (state.saveError) {
+        state.saveError = null;
+        render();
+      }
+      return true;
+    },
+    (err) => {
+      state.saveError = `保存失败：${err.message}`;
+      render();
+      return false;
+    }
+  );
 }
 
 /* ---------- 首页 ---------- */
@@ -147,22 +163,34 @@ function renderBody(day, plan) {
 function renderDraftCard(draft) {
   const template = findTemplate(draft.templateId);
   const d = parseDateKey(draft.date);
-  const sum = template ? summarize(draft, template) : { totalSets: 0 };
+  const totalSets = countSets(draft, template);
   return el('section', { class: 'card draft-card' }, [
     el('div', { class: 'row-label', text: '有未完成的训练' }),
-    el('div', { text: `${d ? formatDateText(d) : draft.date} · ${template ? template.name : draft.templateId} · ${sum.totalSets} 组` }),
+    el('div', { text: `${d ? formatDateText(d) : draft.date} · ${template ? template.name : draft.templateId} · ${totalSets} 组` }),
     el('div', { class: 'ex-notes', text: '先接着练完或结束它，再开始今天的训练' }),
     el('button', { class: 'btn-primary', type: 'button', onclick: () => { location.hash = '#train'; } }, '继续训练'),
+    el('button', { class: 'btn-secondary', type: 'button', onclick: () => finishTraining(draft, template) }, '结束并保存'),
   ]);
+}
+
+// 总组数：有模板按每侧规则算，没模板就数记录条数
+function countSets(session, template) {
+  if (template) return summarize(session, template).totalSets;
+  return session.entries.reduce((n, e) => n + e.sets.length, 0);
 }
 
 function renderHome(root, day) {
   const { plan, date, isTest } = state;
+  // 别天的、一组都没有的训练只是进训练页又退出来的空壳，回首页就丢掉
+  if (state.session && !state.session.finishedAt && !sessionHasSets(state.session) && !sessionMatches(state.session, day)) {
+    state.session = null;
+  }
   const draft = activeDraft();
   const draftIsToday = Boolean(draft && sessionMatches(draft, day));
   const resume = draftIsToday;
 
-  root.replaceChildren(
+  replaceChildren(root, [
+    state.saveError ? el('p', { class: 'problem save-error', text: state.saveError }) : null,
     el('header', { class: 'today-header' }, [
       el('div', { class: 'today-date' }, [
         el('span', { text: formatDateText(date) }),
@@ -188,59 +216,79 @@ function renderHome(root, day) {
             resume ? '继续训练' : '开始训练'
           ),
         ])
-      : null
-  );
+      : null,
+  ]);
 }
 
 /* ---------- 训练模式 ---------- */
 
 function goHome() {
-  if (sessionHasSets(state.session) && !window.confirm('返回首页？记录已自动保存，再点"继续训练"可以接着练。')) {
-    return;
+  if (sessionHasSets(state.session)) {
+    const msg = state.saveError
+      ? `${state.saveError}。返回首页的话，没保存成功的记录会丢，确定返回？`
+      : '返回首页？记录已自动保存，再点"继续训练"可以接着练。';
+    if (!window.confirm(msg)) return;
+  } else if (state.session && !state.session.finishedAt) {
+    // 一组都没记的 session 从没写进库；离开就丢掉，免得同一天再进来沿用一个很早的 startedAt
+    state.session = null;
   }
   location.hash = '';
 }
 
-// 结束训练：有记录 → 确认后填 finishedAt 保存；没记录 → 确认后丢弃
-function finishTraining(template) {
-  const session = state.session;
+// 结束训练：有记录 → 确认后填 finishedAt 并等写入成功再回首页；没记录 → 确认后丢弃。
+// template 可能为 null（草稿的模板已从计划里删掉），此时只按记录条数汇总。
+async function finishTraining(session, template) {
   if (!session) return;
   const now = Date.now();
-  if (!sessionHasSets(session)) {
-    if (!window.confirm('还没有记录任何一组，直接退出训练？')) return;
-    persistSession(session);
+  const leave = () => {
     state.session = null;
     location.hash = '';
+    render(); // 本来就在首页时 hash 没变，不会触发 hashchange，手动画一次
+  };
+  if (!sessionHasSets(session)) {
+    if (!window.confirm('还没有记录任何一组，直接退出训练？')) return;
+    await persistSession(session);
+    leave();
     return;
   }
-  const { totalSets } = summarize(session, template);
-  const minutes = Math.max(1, Math.round((now - session.startedAt) / 60000));
+  // 隔天才来结束的草稿：按最后一组的时间算结束，用时才不会算成一整天（规则在 workout.js）
+  const finishedAt = finishedAtFor(session, now);
+  const totalSets = countSets(session, template);
+  const minutes = Math.max(1, Math.round((finishedAt - session.startedAt) / 60000));
   if (!window.confirm(`结束训练？共 ${totalSets} 组，用时 ${minutes} 分钟。`)) return;
-  persistSession(finishSession(session, now));
-  state.session = null;
-  location.hash = '';
+  const ok = await persistSession(finishSession(session, template, finishedAt));
+  if (!ok) {
+    window.alert(`${state.saveError || '保存失败'}。这次训练还没保存成功，请再试一次。`);
+    return;
+  }
+  leave();
 }
 
 function renderTrainView(root, day) {
-  const draft = activeDraft();
+  const back = () => { location.hash = ''; };
+  const current = state.session && !state.session.finishedAt ? state.session : null;
   let template;
   let dateText;
-  if (draft) {
-    // 有未完成的草稿就显示草稿（哪怕不是今天的），直到做完或结束
-    template = findTemplate(draft.templateId);
+  if (current && !sessionMatches(current, day)) {
+    // 别天的草稿：一直显示它（撤到 0 组也不切换），直到做完或结束
+    template = findTemplate(current.templateId);
     if (!template) {
-      renderTrainUnavailable(root, { title: `找不到训练日模板 ${draft.templateId}`, onBack: () => { location.hash = ''; } });
+      renderTrainUnavailable(root, {
+        message: `这条未完成的训练用的模板「${current.templateId}」已经不在计划里，没法继续，可以直接结束保存。`,
+        onBack: back,
+        onFinish: () => finishTraining(current, null),
+      });
       return;
     }
-    const d = parseDateKey(draft.date);
-    dateText = d ? formatDateText(d) : draft.date;
+    const d = parseDateKey(current.date);
+    dateText = d ? formatDateText(d) : current.date;
   } else {
     if (day.kind !== 'strength') {
-      renderTrainUnavailable(root, { title: day.title, onBack: () => { location.hash = ''; } });
+      renderTrainUnavailable(root, { message: `今天的安排是「${day.title}」，不是力量训练日。`, onBack: back });
       return;
     }
     template = day.day;
-    if (!sessionMatches(state.session, day)) {
+    if (!current) {
       state.session = newSession(template, day.dateKey);
     }
     dateText = formatDateText(state.date);
@@ -255,12 +303,13 @@ function renderTrainView(root, day) {
     session: state.session,
     template,
     dateText,
+    notice: state.saveError,
     onSelect: (id) => update(selectExercise(state.session, template, id)),
     onCompleteSet: (id) => update(completeSet(state.session, template, id, Date.now())),
     onUndo: (id) => update(undoLastSet(state.session, template, id)),
     onExtra: (id) => update(addExtraSet(state.session, template, id)),
     onBack: goHome,
-    onFinish: () => finishTraining(template),
+    onFinish: () => finishTraining(state.session, template),
   });
 }
 
@@ -333,10 +382,28 @@ async function main() {
     root.replaceChildren(el('p', { class: 'problem', text: `读取训练计划失败：${err.message}` }));
     return;
   }
-  try {
-    state.session = await findDraft({ test: isTest });
-  } catch (err) {
-    setStatus(`读取草稿失败：${err.message}`);
+  // 读草稿最多等 3 秒：IndexedDB 偶尔会挂住（WebKit 有过 open 不回调的问题），不能让首页跟着卡死。
+  // 超时后先画首页，草稿晚到时只要用户还没开始新的训练就补上。
+  const draftLoad = findDraft({ test: isTest }).then(
+    (draft) => ({ draft }),
+    (err) => ({ error: err })
+  );
+  const first = await Promise.race([
+    draftLoad,
+    new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), DRAFT_LOAD_TIMEOUT_MS)),
+  ]);
+  if (first.draft) state.session = first.draft;
+  else if (first.error) state.saveError = `读取草稿失败：${first.error.message}`;
+  else if (first.timedOut) {
+    draftLoad.then((late) => {
+      if (late.draft && !sessionHasSets(state.session)) {
+        state.session = late.draft;
+        render();
+      } else if (late.error) {
+        state.saveError = `读取草稿失败：${late.error.message}`;
+        render();
+      }
+    });
   }
   requestPersistentStorage(); // 申请持久存储，结果不影响使用
   render();

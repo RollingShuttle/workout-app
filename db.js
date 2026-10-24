@@ -32,10 +32,15 @@ function openDb() {
         db.close();
         dbPromise = null;
       };
+      // iOS 后台挂起后系统可能直接断掉连接：丢掉缓存的连接，下次操作重新打开
+      db.onclose = () => {
+        dbPromise = null;
+      };
       resolve(db);
     };
     req.onerror = () => reject(req.error || new Error('打开数据库失败'));
-    req.onblocked = () => reject(new Error('数据库被其他页面占用'));
+    // blocked 不是失败：别的页面还没关连接，关了之后这个 open 仍会 success，所以这里只等
+    req.onblocked = () => {};
   });
   dbPromise.catch(() => {
     dbPromise = null;
@@ -50,10 +55,25 @@ function requestToPromise(req) {
   });
 }
 
-async function withStore(storeName, mode, fn) {
+async function withStore(storeName, mode, fn, retried = false) {
   const db = await openDb();
+  let tx;
+  try {
+    tx = db.transaction(storeName, mode);
+  } catch (err) {
+    // 连接已经被关掉（iOS 后台回来后常见，报 InvalidStateError）：重开一次再试
+    if (!retried) {
+      dbPromise = null;
+      try {
+        db.close();
+      } catch (_) {
+        /* 已关 */
+      }
+      return withStore(storeName, mode, fn, true);
+    }
+    throw err;
+  }
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, mode);
     const store = tx.objectStore(storeName);
     let result;
     tx.oncomplete = () => resolve(result);
@@ -82,27 +102,24 @@ export function deleteSession(id) {
   return withStore('sessions', 'readwrite', (store) => requestToPromise(store.delete(id)));
 }
 
-export function getAllSessions() {
+// 全表读取只在本文件内用；外部一律走 listSessions / findDraft，
+// 保证 ?date= 测试模式的记录（test:true）和真实训练永远分开。
+function getAllSessions() {
   return withStore('sessions', 'readonly', (store) => requestToPromise(store.getAll()));
 }
 
-// 未完成的训练草稿（最多应有一条；有多条时取最近开始的）。
-// test=true 只找 ?date= 测试模式建的草稿，false 只找真实训练，两者互不干扰。
-export async function findDraft({ test = false } = {}) {
+// 某一模式下的全部训练（含草稿），按开始时间倒序。以后历史列表、导出、备份提醒计数都从这里读。
+export async function listSessions({ test = false } = {}) {
   const all = await getAllSessions();
-  const drafts = all.filter((s) => !s.finishedAt && Boolean(s.test) === test);
-  drafts.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
-  return drafts[0] || null;
+  const rows = all.filter((s) => Boolean(s.test) === test);
+  rows.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+  return rows;
 }
 
-export function getSetting(key) {
-  return withStore('settings', 'readonly', (store) => requestToPromise(store.get(key))).then((row) =>
-    row ? row.value : undefined
-  );
-}
-
-export function putSetting(key, value) {
-  return withStore('settings', 'readwrite', (store) => requestToPromise(store.put({ key, value })));
+// 未完成的训练草稿（最多应有一条；有多条时取最近开始的）。
+export async function findDraft({ test = false } = {}) {
+  const rows = await listSessions({ test });
+  return rows.find((s) => !s.finishedAt) || null;
 }
 
 // 申请持久存储（spec 2.5）：支持的话系统存储紧张时也不清这个站的数据。失败不影响使用。

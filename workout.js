@@ -166,15 +166,34 @@ export function summarize(session, template) {
   return { totalSets, doneExercises, totalExercises: session.entries.length };
 }
 
-// 结束训练：填 finishedAt，把运行态 status 映射成 spec 2.3 的 done / partial / skipped
-export function finishSession(session, now) {
+// 结束训练：填 finishedAt，把运行态 status 映射成 spec 2.3 的 done / partial / skipped。
+// done 看的是"做够计划组数（sets.max）"，所以按过"再加一组"没做也算 done。template 为 null 时退回运行态判断。
+export function finishSession(session, template, now) {
   return {
     ...session,
     finishedAt: now,
     activeExerciseId: null,
-    entries: session.entries.map((e) => ({
-      ...e,
-      status: e.status === 'done' ? 'done' : e.sets.length > 0 ? 'partial' : 'skipped',
-    })),
+    entries: session.entries.map((e) => {
+      const exercise = template ? findExercise(template, e.exerciseId) : null;
+      let done;
+      if (exercise) {
+        const sets = exercise.sets || {};
+        const planned = sets.max ?? sets.min ?? 1;
+        done = completedSets(e, exercise) >= planned;
+      } else {
+        done = e.status === 'done';
+      }
+      // 再加的组只保留真正做了的部分，没做的不留痕迹
+      const extraDone = exercise ? Math.max(0, completedSets(e, exercise) - (exercise.sets?.max ?? exercise.sets?.min ?? 1)) : e.extraSets;
+      return { ...e, extraSets: extraDone, status: done ? 'done' : e.sets.length > 0 ? 'partial' : 'skipped' };
+    }),
   };
+}
+
+// 最后一组之后超过这么久才点"结束"（忘了结束 / 隔天补结束），结束时刻就按最后一组算，总时长才不会是一整天
+export const STALE_FINISH_MS = 60 * 60 * 1000;
+
+export function finishedAtFor(session, now) {
+  const last = latestCompletedAt(session.entries) ?? session.startedAt;
+  return now - last > STALE_FINISH_MS ? last : now;
 }

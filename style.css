@@ -346,3 +346,13 @@ body {
 .draft-card .btn-primary {
   margin-top: 12px;
 }
+
+.save-error {
+  margin: 0 0 12px;
+}
+
+.draft-card .btn-secondary {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+}
