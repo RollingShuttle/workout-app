@@ -20,16 +20,24 @@ import {
   summarize,
   resetRest,
   hydrateSession,
+  endExercise,
+  skipExercise,
+  unskipExercise,
+  setAlternate,
+  findExercise,
+  findEntry,
+  sessionHasInput,
 } from './workout.js';
-import { renderTrain, renderTrainUnavailable, updateRestClock } from './train-view.js';
+import { renderTrain, renderTrainUnavailable, renderAlternateSheet, updateRestClock } from './train-view.js';
 import { putSession, deleteSession, findDraft, requestPersistentStorage } from './db.js';
 
-const APP_VERSION = '0.5.0';
+const APP_VERSION = '0.6.0';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
 // 全局状态：计划、当前"今天"、进行中的训练、最近一次保存错误（null = 正常）。
 // session 每次变化都写进 IndexedDB（有记录时 put，没记录时 delete），启动时从草稿恢复。
-const state = { plan: null, date: null, isTest: false, session: null, saveError: null, trainTemplate: null };
+// picker：正在换替代动作的 exerciseId（底部选单打开时），否则 null
+const state = { plan: null, date: null, isTest: false, session: null, saveError: null, trainTemplate: null, picker: null };
 
 function setStatus(text) {
   const node = document.getElementById('status');
@@ -71,10 +79,10 @@ function sessionHasSets(session) {
   return Boolean(session && session.entries.some((e) => e.sets.length > 0));
 }
 
-// 有记录、还没结束的训练 = 草稿；不管是不是今天的，都先把它做完或结束
+// 有用户输入（记了组 / 换了替代 / 跳过）、还没结束的训练 = 草稿；不管是不是今天的，都先把它做完或结束
 function activeDraft() {
   const s = state.session;
-  return s && !s.finishedAt && sessionHasSets(s) ? s : null;
+  return s && !s.finishedAt && sessionHasInput(s) ? s : null;
 }
 
 function newSession(template, dateKey) {
@@ -86,7 +94,7 @@ function newSession(template, dateKey) {
 // 写入 IndexedDB：有记录就保存，撤到一组都没有就删掉草稿。
 // 返回 Promise<boolean>，从不 reject；失败时把错误放进 state.saveError 显示在页面上，成功后清掉。
 function persistSession(session) {
-  const op = sessionHasSets(session) || session.finishedAt ? putSession(session) : deleteSession(session.id);
+  const op = sessionHasInput(session) || session.finishedAt ? putSession(session) : deleteSession(session.id);
   return op.then(
     () => {
       if (state.saveError) {
@@ -184,7 +192,7 @@ function countSets(session, template) {
 function renderHome(root, day) {
   const { plan, date, isTest } = state;
   // 别天的、一组都没有的训练只是进训练页又退出来的空壳，回首页就丢掉
-  if (state.session && !state.session.finishedAt && !sessionHasSets(state.session) && !sessionMatches(state.session, day)) {
+  if (state.session && !state.session.finishedAt && !sessionHasInput(state.session) && !sessionMatches(state.session, day)) {
     state.session = null;
   }
   const draft = activeDraft();
@@ -225,7 +233,7 @@ function renderHome(root, day) {
 /* ---------- 训练模式 ---------- */
 
 function goHome() {
-  if (sessionHasSets(state.session)) {
+  if (sessionHasInput(state.session)) {
     const msg = state.saveError
       ? `${state.saveError}。返回首页的话，没保存成功的记录会丢，确定返回？`
       : '返回首页？记录已自动保存，再点"继续训练"可以接着练。';
@@ -317,9 +325,32 @@ function renderTrainView(root, day) {
     onUndo: (id) => update(undoLastSet(state.session, template, id)),
     onExtra: (id) => update(addExtraSet(state.session, template, id)),
     onBack: goHome,
+    onEnd: (id) => update(endExercise(state.session, template, id)),
+    onSkip: (id) => update(skipExercise(state.session, template, id)),
+    onUnskip: (id) => update(unskipExercise(state.session, template, id)),
+    onPickAlternate: (id) => { state.picker = id; render(); },
     onFinish: () => finishTraining(state.session, template),
     onReset: () => update(resetRest(state.session, Date.now())),
   });
+  if (state.picker) {
+    const entry = findEntry(state.session, state.picker);
+    const exercise = findExercise(template, state.picker);
+    if (entry && exercise) {
+      renderAlternateSheet(root, {
+        entry,
+        exercise,
+        onPick: (name) => {
+          state.picker = null;
+          const next = setAlternate(state.session, template, entry.exerciseId, name);
+          if (next === state.session) render();
+          else update(next);
+        },
+        onClose: () => { state.picker = null; render(); },
+      });
+    } else {
+      state.picker = null;
+    }
+  }
   startRestTicker();
 }
 
@@ -379,6 +410,7 @@ function render() {
   } else {
     stopRestTicker();
     state.trainTemplate = null;
+    state.picker = null; // 选单开着时离开训练页，别让它下次再弹出来
     renderHome(root, day);
   }
 }
@@ -391,7 +423,7 @@ function watchDayChange() {
   let renderedKey = toDateKey(state.date);
   // 把 state.date 换成现在；返回是否换了
   const refreshDate = () => {
-    if (currentView() === 'train' && sessionHasSets(state.session)) return false;
+    if (currentView() === 'train' && sessionHasInput(state.session)) return false;
     const now = new Date();
     const key = toDateKey(now);
     if (key === renderedKey) return false;

@@ -15,10 +15,11 @@ export function createSession(template, dateKey, now) {
     restStartedAt: null, // 组间秒表的起点：完成一组 = 那组的时间；按"重置" = 按下的时间
     entries: (template.exercises || []).map((ex) => ({
       exerciseId: ex.id,
-      usedAlternate: null,
+      usedAlternate: null, // 选用替代动作时记替代动作名（spec 2.3）
       sets: [],
-      status: 'pending', // pending | active | done
+      status: 'pending', // pending | active | done | skipped
       extraSets: 0, // "再加一组"累计
+      endedEarly: false, // 做满 min 组后手动"结束动作"
     })),
   };
 }
@@ -45,12 +46,39 @@ export function completedSets(entry, exercise) {
 }
 
 export function isDone(entry, exercise) {
-  return completedSets(entry, exercise) >= targetSets(exercise, entry);
+  return Boolean(entry.endedEarly) || completedSets(entry, exercise) >= targetSets(exercise, entry);
 }
 
-function plannedWeight(exercise) {
-  const load = exercise.load || {};
+// 选了替代动作时，显示名和重量按替代动作来；没选就是原动作
+export function effectiveExercise(entry, exercise) {
+  if (!entry.usedAlternate) return exercise;
+  const alt = (exercise.alternates || []).find((a) => a.name === entry.usedAlternate);
+  if (!alt) return { ...exercise, name: entry.usedAlternate };
+  // 替代动作没写 load = 重量未知（spec 2.2 的 null 语义），不沿用原动作的重量
+  const load = alt.load || { value: null, unit: (exercise.load || {}).unit || 'lb' };
+  return { ...exercise, name: alt.name, load };
+}
+
+function plannedWeight(entry, exercise) {
+  const load = effectiveExercise(entry, exercise).load || {};
   return load.value ?? null;
+}
+
+// 结束动作：做满 min 组、还没到 max 时允许（spec 2.2）；超过计划组数的"再加一组"用"取消再加一组"退出
+export function canEndExercise(entry, exercise) {
+  const sets = exercise.sets || {};
+  const min = sets.min ?? sets.max ?? 1;
+  const max = sets.max ?? sets.min ?? 1;
+  const done = completedSets(entry, exercise);
+  return !isDone(entry, exercise) && entry.status !== 'skipped' && done >= min && done < max;
+}
+
+// 有没有用户输入：记了组，或者换了替代动作 / 跳过 / 提前结束。草稿保存和返回确认都看这个
+export function sessionHasInput(session) {
+  return Boolean(
+    session &&
+      session.entries.some((e) => e.sets.length > 0 || e.usedAlternate || e.status === 'skipped' || e.endedEarly)
+  );
 }
 
 // 所有记录里最晚完成的一组：{ at, exerciseId }；没有记录返回 null
@@ -84,7 +112,7 @@ function activate(session, id, patch) {
 
 export function selectExercise(session, template, id) {
   const entry = findEntry(session, id);
-  if (!entry || !findExercise(template, id) || entry.status === 'done') return session;
+  if (!entry || !findExercise(template, id) || entry.status === 'done' || entry.status === 'skipped') return session;
   if (session.activeExerciseId === id) return session;
   return activate(session, id, {});
 }
@@ -93,7 +121,7 @@ export function selectExercise(session, template, id) {
 export function completeSet(session, template, id, now) {
   const entry = findEntry(session, id);
   const exercise = findExercise(template, id);
-  if (!entry || !exercise || entry.status === 'done') return session;
+  if (!entry || !exercise || entry.status === 'done' || entry.status === 'skipped') return session;
 
   const setNo = entry.sets.length + 1;
   // 系统时钟被改到过去（now 早于上一组）时记 null，不要记成 0
@@ -101,7 +129,8 @@ export function completeSet(session, template, id, now) {
     session.lastSetCompletedAt == null || now < session.lastSetCompletedAt
       ? null
       : Math.round((now - session.lastSetCompletedAt) / 1000);
-  const set = { setNo, weight: plannedWeight(exercise), reps: null, completedAt: now, restTakenSeconds };
+  const set = { setNo, weight: plannedWeight(entry, exercise), reps: null, completedAt: now, restTakenSeconds };
+  if (entry.usedAlternate) set.usedAlternate = entry.usedAlternate; // 每组记下当时用的替代动作，中途切换也能分清
 
   const updated = { ...entry, sets: [...entry.sets, set] };
   const done = isDone(updated, exercise);
@@ -134,12 +163,12 @@ export function undoLastSet(session, template, id) {
       activeExerciseId: session.activeExerciseId === id ? null : session.activeExerciseId,
       // lastSetCompletedAt 不动：没有删任何真实记录
       entries: session.entries.map((e) =>
-        e.exerciseId === id ? { ...e, extraSets: e.extraSets - 1, status: 'done' } : e
+        e.exerciseId === id ? { ...e, extraSets: e.extraSets - 1, status: 'done', endedEarly: false } : e
       ),
     };
   }
   if (entry.sets.length === 0) return session;
-  const next = activate(session, id, { sets: entry.sets.slice(0, -1) });
+  const next = activate(session, id, { sets: entry.sets.slice(0, -1), endedEarly: false });
   const latest = latestSet(next.entries);
   // 撤掉的正是秒表锚定的那组（剩下的最晚一组变了）→ 秒表退回到剩下的最后一组；
   // 撤的是更早的组 → 当前这次休息没变，restStartedAt 不动，手动"重置"不丢。
@@ -178,14 +207,59 @@ export function restReferenceSeconds(session, template, fallback = 90) {
 export function addExtraSet(session, template, id) {
   const entry = findEntry(session, id);
   if (!entry || !findExercise(template, id) || entry.status !== 'done') return session;
+  // 提前结束的动作："继续这个动作"只是回到进行中，目标组数不变
+  if (entry.endedEarly) return activate(session, id, { endedEarly: false });
   return activate(session, id, { extraSets: entry.extraSets + 1 });
+}
+
+// 结束动作：做满 min 组后手动完成，变灰下沉
+export function endExercise(session, template, id) {
+  const entry = findEntry(session, id);
+  const exercise = findExercise(template, id);
+  if (!entry || !exercise || !canEndExercise(entry, exercise)) return session;
+  return {
+    ...session,
+    activeExerciseId: session.activeExerciseId === id ? null : session.activeExerciseId,
+    entries: session.entries.map((e) => (e.exerciseId === id ? { ...e, endedEarly: true, status: 'done' } : e)),
+  };
+}
+
+// 跳过这个动作：已有的组保留，状态 skipped，下沉；取消跳过回到待做
+export function skipExercise(session, template, id) {
+  const entry = findEntry(session, id);
+  if (!entry || !findExercise(template, id) || entry.status === 'done' || entry.status === 'skipped') return session;
+  return {
+    ...session,
+    activeExerciseId: session.activeExerciseId === id ? null : session.activeExerciseId,
+    entries: session.entries.map((e) => (e.exerciseId === id ? { ...e, status: 'skipped' } : e)),
+  };
+}
+
+export function unskipExercise(session, template, id) {
+  const entry = findEntry(session, id);
+  if (!entry || !findExercise(template, id) || entry.status !== 'skipped') return session;
+  return {
+    ...session,
+    entries: session.entries.map((e) => (e.exerciseId === id ? { ...e, status: 'pending' } : e)),
+  };
+}
+
+// 换替代动作：name 为 null 表示换回原动作。只改这条记录的 usedAlternate，已记的组不动
+export function setAlternate(session, template, id, name) {
+  const entry = findEntry(session, id);
+  const exercise = findExercise(template, id);
+  if (!entry || !exercise) return session;
+  if (name != null && !(exercise.alternates || []).some((a) => a.name === name)) return session;
+  return {
+    ...session,
+    entries: session.entries.map((e) => (e.exerciseId === id ? { ...e, usedAlternate: name } : e)),
+  };
 }
 
 // 列表顺序：未完成的按计划顺序，完成的下沉到底部（也按计划顺序）
 export function orderedEntries(session) {
-  const open = session.entries.filter((e) => e.status !== 'done');
-  const done = session.entries.filter((e) => e.status === 'done');
-  return [...open, ...done];
+  const closed = (e) => e.status === 'done' || e.status === 'skipped';
+  return [...session.entries.filter((e) => !closed(e)), ...session.entries.filter(closed)];
 }
 
 export function summarize(session, template) {
@@ -214,13 +288,15 @@ export function finishSession(session, template, now) {
       if (exercise) {
         const sets = exercise.sets || {};
         const planned = sets.max ?? sets.min ?? 1;
-        done = completedSets(e, exercise) >= planned;
+        done = Boolean(e.endedEarly) || completedSets(e, exercise) >= planned;
       } else {
         done = e.status === 'done';
       }
       // 再加的组只保留真正做了的部分，没做的不留痕迹
       const extraDone = exercise ? Math.max(0, completedSets(e, exercise) - (exercise.sets?.max ?? exercise.sets?.min ?? 1)) : e.extraSets;
-      return { ...e, extraSets: extraDone, status: done ? 'done' : e.sets.length > 0 ? 'partial' : 'skipped' };
+      // 跳过且一组没做 → skipped；做了几组 → partial；做满或手动结束 → done
+      const status = done ? 'done' : e.sets.length > 0 ? 'partial' : 'skipped';
+      return { ...e, extraSets: extraDone, status };
     }),
   };
 }

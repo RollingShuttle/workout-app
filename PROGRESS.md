@@ -8,11 +8,12 @@
 - 2026-10-23：Phase 1 第三项完成——训练模式（workout.js 纯状态逻辑 + train-view.js 渲染 + app.js 的 #train 路由）。训练记录目前只在内存里，刷新即丢，草稿保存是后面的步骤。
 - 2026-10-24：Phase 1 第五项完成——训练草稿自动保存到 IndexedDB（db.js），每点一下就写库，关掉再打开能续；加了最小的"结束训练"。首页有别天的未完成训练时显示卡片（继续训练 / 结束并保存）。
 - 2026-10-24：Phase 1 第四项完成——组间秒表（训练页顶部固定一条：大号正计时、参考休息时长和动作名、到点变绿、只有"重置"）。Phase 1 的功能项至此全部完成，剩真机验收和部署。
+- 2026-10-24：训练模式次要按钮完成——换替代动作（底部选单）、跳过这个动作、结束动作（做满 min 组后可用）。
 
 ## 下一步
 
 - 部署到 GitHub Pages 并在 iPhone 真机验收 Phase 1 全部项（添加到主屏幕、图标、离线打开、首页日期、训练模式、秒表锁屏 2 分钟、草稿关 App 再开）。部署前把 sw.js 的 CACHE 名再升一级。
-- 训练模式补齐（§3.2 次要按钮，Phase 1 验收不要求，顺序由用户定）：换替代动作、跳过这个动作、结束动作（已达 min 组时可用）、结束训练的汇总页。
+- 结束训练的汇总页（每个动作的最佳组要等 Phase 2 的重量/次数输入）。
 - 首页 §3.1 还没做的部分（Phase 1 验收不要求，顺序由用户定）：本周 7 天小条、规则提示折叠、"今天打球 / 不打"按钮和本周球次数（Phase 3）。
 - Phase 2：每组重量 / 次数输入、上次数据预填、历史列表、动作折线、进阶 / 退阶提示。
 
@@ -29,6 +30,8 @@
 - 2026-10-23 · 训练模式：workout.js（createSession / selectExercise / completeSet / undoLastSet / addExtraSet / canCancelExtraSet / orderedEntries / summarize，纯函数、不可变更新；每侧动作左→右各一次算一组；目标组数 = sets.max + 再加的组；每组记 setNo / side / weight(计划值) / reps(null，Phase 2 填) / completedAt / restTakenSeconds；session.lastSetCompletedAt 给秒表用）、train-view.js（每行：名称、已完成/目标、重量 · 次数区间 · 每侧；进行中高亮只有一个，展开 完成一组 / 完成左侧 / 完成右侧 大按钮 + 撤销；完成的变灰打勾下沉、点击无反应，只有 撤销最后一组 / 再加一组 两个入口；再加一组 = 目标 +1 回到进行中，那组还没做时撤销 = 取消再加一组；每侧动作撤销按钮写明 撤销左侧/右侧，半组时显示"2/3 · 左侧已做"）、app.js（首页固定训练日有"开始训练"按钮，已有记录时显示"继续训练"；#train 路由；返回前 confirm；训练中已有记录时跨天不换"今天"，回首页再换；SW 注册加 updateViaCache:'none'）、style.css（主按钮 56px、次按钮 44px、完成行灰色文字而非半透明、浅色 #007aff / 深色 #0a84ff）· 验收通过：推日 5 个动作全部做完列表全灰下沉、头部 5/5 · 15 组、点完成行无反应；撤销后坐姿肩推回到进行中 2/3 并上浮，再做完恢复；再加一组 3/4 → 4/4；取消再加一组 3/4 → 3/3；4/4 撤销两次回 3/3；每侧动作 完成左侧→完成右侧→1/3，撤销右侧→"2/3 · 左侧已做"→撤销左侧→2/3；返回取消留在训练页、确认后首页"继续训练"并恢复状态；非力量日 #train 显示提示；真实日期路径打桩 Date 跨午夜：解锁后仍是推日、再点一组仍记在推日、回首页才切到 10/29 拉日；375px 无横向溢出；深/浅色均检查；无控制台错误。四视角审查 + 逐条反证确认 11 条（3 组重复）全部已修。有意超出 §3.2 两处：进行中的动作也有"撤销最后一组"（§4 误触保护，否则误点"完成一组"要等做完才能改）；训练页标题栏显示 完成 x/y 个动作 · n 组。做秒表时页头布局要连这行一起定 · 组间秒表
 
 ## 已知问题
+- 2026-10-24 · 训练模式次要按钮：workout.js（entry 加 endedEarly；effectiveExercise 按替代动作取名字和重量，替代动作没写 load 按"首次做时填"不沿用原重量；每组记 usedAlternate 方便中途切换后区分；canEndExercise：做满 min 且未到 max；endExercise / skipExercise / unskipExercise / setAlternate；addExtraSet 对提前结束的动作只是回到进行中不加目标；取消再加一组清 endedEarly；sessionHasInput：记了组或换替代/跳过/提前结束都算有输入，草稿保存、返回确认、跨天保护、首页草稿判断都用它；orderedEntries 把完成和跳过都下沉；finishSession：提前结束算 done、跳过无组算 skipped、有组算 partial）、train-view.js（进行中行加 train-secondary 一行：撤销 / 结束动作（只在 min<max 的动作显示，未达 min 禁用）/ 跳过 / 换替代动作（有 alternates 才显示）；完成行"继续这个动作"或"再加一组"；跳过行显示"已跳过"只有"取消跳过"；替代动作行显示"替代 原名"；底部选单：原动作 + 替代动作（重量未填就写明）+ 取消，aria-modal、拿焦点、Escape 关闭、点背景关闭、背后不滚动；秒表条动作名用替代名）、app.js（onEnd / onSkip / onUnskip / onPickAlternate；state.picker 离开训练页清掉）、style.css、sw.js v11 · 验收通过：卧推换成斜下胸推机器后行名、"替代 卧推 · 45 lb"、记录 weight 45 和 set.usedAlternate；换回原动作；中途切换后每组各自带标记；Escape / 背景 / 取消都能关；离开训练页再进不弹选单；跳过的行变灰下沉"已跳过"、取消跳过回原位；三头 2–3 组：结束动作未满 2 组禁用，2 组后结束 → 2/3 完成 + "继续这个动作"，继续后目标不变，3/3 后再加一组 → 3/4 时结束动作禁用，取消再加一组回 3/3 完成态；只跳过没做组也写进草稿且返回时确认；结束训练后状态 done / partial / skipped；无控制台错误。两视角审查 11 条（另两视角和反证因会话上限失败），11 条全部按代码确认并修复 · 三版外观风格
+
 - 2026-10-24 · 用户决定两件事：(1) 每侧动作（单臂划船、弓步走）做完两侧再按一次"完成一组"，一次算一组、只有一个计时——与 spec 3.2 第 2 步"perSide 动作按左→右各一次算一组"不同，以用户决定为准，spec 那句以后改；去掉了左右半组逻辑（completedSets = 记录条数，不再记 side，按钮一律"完成一组"，撤销一律"撤销最后一组"）。(2) 秒表显示封顶 99:59（train-view.js CLOCK_CAP_SECONDS）。sw.js v10 · 验收通过：拉日选单臂哑铃划船 → 按钮"完成一组"，按三次 3/3 完成，无"左侧已做"提示；打桩快进 100 分钟 → 显示 99:59 且为绿色；撤销按钮"撤销最后一组"；无控制台错误 · 真机验收 / 部署
 
 - 2026-10-24 · 组间秒表：workout.js（session 加 lastSetExerciseId、restStartedAt；completeSet 三个时间戳一起打；undoLastSet 只在撤掉的是锚定的最后一组时才把秒表退回到剩下的最后一组，撤更早的组不动秒表、手动重置不丢；resetRest 只改 restStartedAt，restTakenSeconds 仍按 lastSetCompletedAt 算；restReferenceSeconds 按上一组动作的 restSeconds，默认 90；时钟回拨时 restTakenSeconds 记 null；finishSession 清 restStartedAt；hydrateSession 给旧版草稿补字段）、train-view.js（sticky 页头里的秒表条：40px 等宽数字 mm:ss、"参考 02:30 · 动作名"、重置按钮；空闲态 --:-- 且重置禁用；updateRestClock 每次只改文字和 class，不重画整页；提示页页头也用 train-topline）、app.js（setTimeout 链对齐到秒表的下一个整秒，不用 setInterval 累加；visibilitychange / pageshow 回前台立刻重算并重启链，pagehide 和离开训练页停掉；提示页不起链；重置按钮 → resetRest → 写草稿）、style.css（页头改纵向、top 用 safe-area、--ready 绿色浅/深两套）、sw.js v9 · 验收通过：空闲态 --:--；做一组后 00:00 开始走；Date 打桩快进 120 秒 + visibilitychange → 02:02；快进 160 秒 → 变绿（参考 02:30）；重置 → 00:00，之后再做一组 restTakenSeconds = 203 秒（按真实上一组算，不受重置影响）；撤销最后一组秒表退回上一组；重置后撤销非最后一组秒表不动、撤销锚定组才回退；训练页内 2.5 秒 3 次 tick、回首页 0 次；刷新后从草稿里的 restStartedAt 接着走（00:09 → 00:10）；注入旧版无 restStartedAt 的草稿 → 秒表显示 00:32；非力量日提示页页头同行且恢复前台不起定时链；375px 无横向溢出；无控制台错误。四视角审查 17 条，反证确认 5 条全部已修 · 真机验收 / 部署

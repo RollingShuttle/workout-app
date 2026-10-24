@@ -413,3 +413,96 @@ body {
 .rest-reset:disabled {
   opacity: 0.4;
 }
+
+/* 训练行的次要按钮行 */
+.train-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.4;
+}
+
+/* 跳过的动作：和完成的一样变灰下沉 */
+.train-row-skipped {
+  background: transparent;
+  border: 1px solid var(--line);
+}
+
+.train-row-skipped .train-row-head {
+  color: var(--muted);
+}
+
+.train-row-skipped .train-row-name {
+  font-weight: 400;
+}
+
+/* 换替代动作的底部选单 */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, 0.5);
+  overscroll-behavior: contain;
+  touch-action: none; /* 选单打开时不让背后的列表跟着滚 */
+}
+
+.sheet {
+  outline: none;
+  touch-action: pan-y;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.sheet {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  border-radius: 16px 16px 0 0;
+  background: var(--card);
+}
+
+.sheet-title {
+  margin: 4px 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.sheet-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+}
+
+.sheet-item-selected .sheet-item-name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sheet-item-sub {
+  color: var(--muted);
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.sheet-cancel {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 12px;
+}
