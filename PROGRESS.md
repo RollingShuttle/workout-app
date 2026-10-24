@@ -12,6 +12,8 @@
 
 ## 下一步
 
+- 【等用户选】三版外观风格预览已做：index.html 里有 `?theme=a|b|c` 钩子，样式在 themes/a.css（iOS 原生微调）、themes/b.css（深色健身房、荧光绿、只有深色）、themes/c.css（暖色纸感、衬线标题）。对比页 https://claude.ai/artifact/GaYTUk6veqmZ5HmTx71SAT 。用户选定后：把那一套并进 style.css，删掉 themes/ 和 index.html 的钩子，sw.js CACHE 升一级。
+
 - 部署到 GitHub Pages 并在 iPhone 真机验收 Phase 1 全部项（添加到主屏幕、图标、离线打开、首页日期、训练模式、秒表锁屏 2 分钟、草稿关 App 再开）。部署前把 sw.js 的 CACHE 名再升一级。
 - 结束训练的汇总页（每个动作的最佳组要等 Phase 2 的重量/次数输入）。
 - 首页 §3.1 还没做的部分（Phase 1 验收不要求，顺序由用户定）：本周 7 天小条、规则提示折叠、"今天打球 / 不打"按钮和本周球次数（Phase 3）。
