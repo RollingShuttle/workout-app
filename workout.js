@@ -10,7 +10,9 @@ export function createSession(template, dateKey, now) {
     startedAt: now,
     finishedAt: null,
     activeExerciseId: null,
-    lastSetCompletedAt: null, // 组间秒表只靠这个时间戳
+    lastSetCompletedAt: null, // 上一组真正完成的时间，算 restTakenSeconds 用；重置秒表不动它
+    lastSetExerciseId: null, // 上一组是哪个动作，秒表的参考休息时长按它取
+    restStartedAt: null, // 组间秒表的起点：完成一组 = 那组的时间；按"重置" = 按下的时间
     entries: (template.exercises || []).map((ex) => ({
       exerciseId: ex.id,
       usedAlternate: null,
@@ -56,14 +58,20 @@ function plannedWeight(exercise) {
   return load.value ?? null;
 }
 
-function latestCompletedAt(entries) {
+// 所有记录里最晚完成的一组：{ at, exerciseId }；没有记录返回 null
+function latestSet(entries) {
   let latest = null;
   for (const e of entries) {
     for (const s of e.sets) {
-      if (latest == null || s.completedAt > latest) latest = s.completedAt;
+      if (!latest || s.completedAt > latest.at) latest = { at: s.completedAt, exerciseId: e.exerciseId };
     }
   }
   return latest;
+}
+
+function latestCompletedAt(entries) {
+  const latest = latestSet(entries);
+  return latest ? latest.at : null;
 }
 
 // 把 id 设为进行中，其他进行中的回到待做；已完成的动作点击无反应
@@ -94,23 +102,26 @@ export function completeSet(session, template, id, now) {
 
   const side = nextSide(entry, exercise);
   const setNo = exercise.perSide ? Math.floor(entry.sets.length / 2) + 1 : entry.sets.length + 1;
+  // 系统时钟被改到过去（now 早于上一组）时记 null，不要记成 0
   const restTakenSeconds =
-    session.lastSetCompletedAt == null ? null : Math.max(0, Math.round((now - session.lastSetCompletedAt) / 1000));
+    session.lastSetCompletedAt == null || now < session.lastSetCompletedAt
+      ? null
+      : Math.round((now - session.lastSetCompletedAt) / 1000);
   const set = { setNo, weight: plannedWeight(exercise), reps: null, completedAt: now, restTakenSeconds };
   if (side) set.side = side;
 
   const updated = { ...entry, sets: [...entry.sets, set] };
   const done = isDone(updated, exercise);
   const next = activate(session, id, updated);
+  const stamped = { ...next, lastSetCompletedAt: now, lastSetExerciseId: id, restStartedAt: now };
   if (done) {
     return {
-      ...next,
-      lastSetCompletedAt: now,
+      ...stamped,
       activeExerciseId: null,
-      entries: next.entries.map((e) => (e.exerciseId === id ? { ...e, status: 'done' } : e)),
+      entries: stamped.entries.map((e) => (e.exerciseId === id ? { ...e, status: 'done' } : e)),
     };
   }
-  return { ...next, lastSetCompletedAt: now };
+  return stamped;
 }
 
 // "再加一组"之后、那一组还没开始做：此时撤销 = 取消加组，回到完成态，不删真实记录
@@ -137,7 +148,38 @@ export function undoLastSet(session, template, id) {
   }
   if (entry.sets.length === 0) return session;
   const next = activate(session, id, { sets: entry.sets.slice(0, -1) });
-  return { ...next, lastSetCompletedAt: latestCompletedAt(next.entries) };
+  const latest = latestSet(next.entries);
+  // 撤掉的正是秒表锚定的那组（剩下的最晚一组变了）→ 秒表退回到剩下的最后一组；
+  // 撤的是更早的组 → 当前这次休息没变，restStartedAt 不动，手动"重置"不丢。
+  const anchorRemoved = !latest || latest.at !== session.lastSetCompletedAt;
+  return {
+    ...next,
+    lastSetCompletedAt: latest ? latest.at : null,
+    lastSetExerciseId: latest ? latest.exerciseId : null,
+    restStartedAt: anchorRemoved ? (latest ? latest.at : null) : session.restStartedAt,
+  };
+}
+
+// 旧版（v0.4）草稿只有 lastSetCompletedAt：补上秒表字段，重开后秒表才能接着算
+export function hydrateSession(session) {
+  const latest = latestSet(session.entries);
+  return {
+    ...session,
+    lastSetExerciseId: session.lastSetExerciseId ?? (latest ? latest.exerciseId : null),
+    restStartedAt: session.restStartedAt ?? session.lastSetCompletedAt ?? (latest ? latest.at : null),
+  };
+}
+
+// 重置秒表：从现在重新计时。不改 lastSetCompletedAt，所以下一组的 restTakenSeconds 仍按真实的上一组算。
+export function resetRest(session, now) {
+  if (session.restStartedAt == null) return session;
+  return { ...session, restStartedAt: now };
+}
+
+// 组间秒表的参考休息秒数：按上一组的动作取 restSeconds，没有就用默认值
+export function restReferenceSeconds(session, template, fallback = 90) {
+  const exercise = session.lastSetExerciseId ? findExercise(template, session.lastSetExerciseId) : null;
+  return exercise && typeof exercise.restSeconds === 'number' ? exercise.restSeconds : fallback;
 }
 
 // 再加一组：目标组数 +1，动作回到进行中（做完这组再按"完成一组"）
@@ -173,6 +215,7 @@ export function finishSession(session, template, now) {
     ...session,
     finishedAt: now,
     activeExerciseId: null,
+    restStartedAt: null,
     entries: session.entries.map((e) => {
       const exercise = template ? findExercise(template, e.exerciseId) : null;
       let done;

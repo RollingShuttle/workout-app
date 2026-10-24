@@ -8,6 +8,7 @@
   --accent: #007aff; /* iOS systemBlue 浅色 */
   --warn: #ff9f0a;
   --warn-text: #b24d00; /* 浅色背景上可读的橙色文字 */
+  --ready: #248a3d; /* 休息够了：iOS systemGreen 浅色 */
   --danger: #c41e1e;
 }
 
@@ -20,6 +21,7 @@
     --line: rgba(84, 84, 88, 0.6);
     --accent: #0a84ff; /* iOS systemBlue 深色 */
     --warn-text: #ff9f0a;
+    --ready: #30d158; /* iOS systemGreen 深色 */
     --danger: #ff453a;
   }
 }
@@ -213,11 +215,9 @@ body {
 /* 训练模式 */
 .train-header {
   position: sticky;
-  top: 0;
+  top: env(safe-area-inset-top, 0px); /* 主屏幕模式下滚动时别顶进刘海/状态栏 */
   z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  display: block; /* 上面一行是标题，下面一行是秒表条 */
   padding: 8px 0 12px;
   background: var(--bg);
 }
@@ -355,4 +355,61 @@ body {
   display: block;
   width: 100%;
   margin-top: 8px;
+}
+
+/* 组间秒表条（在 sticky 页头里，滚动时一直可见） */
+.train-topline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rest-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  margin-top: 8px;
+  padding: 8px 14px;
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.rest-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.rest-time {
+  font-size: 40px;
+  line-height: 1;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.rest-time-idle {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.rest-time-ready {
+  color: var(--ready);
+}
+
+.rest-meta {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rest-reset {
+  flex: none;
+}
+
+.rest-reset:disabled {
+  opacity: 0.4;
 }

@@ -18,16 +18,18 @@ import {
   finishSession,
   finishedAtFor,
   summarize,
+  resetRest,
+  hydrateSession,
 } from './workout.js';
-import { renderTrain, renderTrainUnavailable } from './train-view.js';
+import { renderTrain, renderTrainUnavailable, updateRestClock } from './train-view.js';
 import { putSession, deleteSession, findDraft, requestPersistentStorage } from './db.js';
 
-const APP_VERSION = '0.4.0';
+const APP_VERSION = '0.5.0';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
 // 全局状态：计划、当前"今天"、进行中的训练、最近一次保存错误（null = 正常）。
 // session 每次变化都写进 IndexedDB（有记录时 put，没记录时 delete），启动时从草稿恢复。
-const state = { plan: null, date: null, isTest: false, session: null, saveError: null };
+const state = { plan: null, date: null, isTest: false, session: null, saveError: null, trainTemplate: null };
 
 function setStatus(text) {
   const node = document.getElementById('status');
@@ -273,6 +275,8 @@ function renderTrainView(root, day) {
     // 别天的草稿：一直显示它（撤到 0 组也不切换），直到做完或结束
     template = findTemplate(current.templateId);
     if (!template) {
+      stopRestTicker();
+      state.trainTemplate = null;
       renderTrainUnavailable(root, {
         message: `这条未完成的训练用的模板「${current.templateId}」已经不在计划里，没法继续，可以直接结束保存。`,
         onBack: back,
@@ -284,6 +288,8 @@ function renderTrainView(root, day) {
     dateText = d ? formatDateText(d) : current.date;
   } else {
     if (day.kind !== 'strength') {
+      stopRestTicker();
+      state.trainTemplate = null;
       renderTrainUnavailable(root, { message: `今天的安排是「${day.title}」，不是力量训练日。`, onBack: back });
       return;
     }
@@ -299,10 +305,12 @@ function renderTrainView(root, day) {
     persistSession(next);
     render();
   };
+  state.trainTemplate = template;
   renderTrain(root, {
     session: state.session,
     template,
     dateText,
+    now: Date.now(),
     notice: state.saveError,
     onSelect: (id) => update(selectExercise(state.session, template, id)),
     onCompleteSet: (id) => update(completeSet(state.session, template, id, Date.now())),
@@ -310,7 +318,55 @@ function renderTrainView(root, day) {
     onExtra: (id) => update(addExtraSet(state.session, template, id)),
     onBack: goHome,
     onFinish: () => finishTraining(state.session, template),
+    onReset: () => update(resetRest(state.session, Date.now())),
   });
+  startRestTicker();
+}
+
+/* ---------- 组间秒表的刷新 ----------
+ * 只存时间戳（session.restStartedAt），显示值 = 现在 − 时间戳，不累加。
+ * 每次 tick 只改秒表条的文字和颜色，不重画整页；下一次 tick 对齐到下一个整秒，这样数字不会晚跳；
+ * 页面不可见时停掉，回到前台立刻重算一次。 */
+let restTimer = null;
+
+function tickRest() {
+  if (currentView() !== 'train' || !state.session || !state.trainTemplate) return;
+  updateRestClock(document.getElementById('app'), state.session, state.trainTemplate, Date.now());
+}
+
+function scheduleRestTick() {
+  const start = state.session && state.session.restStartedAt;
+  const now = Date.now();
+  // 对齐到秒表的下一个整秒；没在计时就每秒看一眼
+  const delay = start == null ? 1000 : 1000 - ((now - start) % 1000) + 20;
+  restTimer = setTimeout(() => {
+    restTimer = null;
+    tickRest();
+    if (document.visibilityState === 'visible' && currentView() === 'train') scheduleRestTick();
+  }, delay);
+}
+
+function startRestTicker() {
+  if (!state.trainTemplate) return; // 提示页没有秒表条，不起定时链
+  tickRest();
+  if (restTimer || document.visibilityState !== 'visible') return;
+  scheduleRestTick();
+}
+
+function stopRestTicker() {
+  if (!restTimer) return;
+  clearTimeout(restTimer);
+  restTimer = null;
+}
+
+function watchRestVisibility() {
+  const onChange = () => {
+    if (document.visibilityState === 'visible' && currentView() === 'train') startRestTicker();
+    else stopRestTicker();
+  };
+  document.addEventListener('visibilitychange', onChange);
+  window.addEventListener('pageshow', onChange);
+  window.addEventListener('pagehide', stopRestTicker);
 }
 
 /* ---------- 路由与启动 ---------- */
@@ -318,8 +374,13 @@ function renderTrainView(root, day) {
 function render() {
   const root = document.getElementById('app');
   const day = resolveDay(state.plan, state.date);
-  if (currentView() === 'train') renderTrainView(root, day);
-  else renderHome(root, day);
+  if (currentView() === 'train') {
+    renderTrainView(root, day);
+  } else {
+    stopRestTicker();
+    state.trainTemplate = null;
+    renderHome(root, day);
+  }
 }
 
 // iOS 主屏幕 App 从后台恢复时不会重新加载页面；跨天了就更新"今天"。
@@ -392,12 +453,12 @@ async function main() {
     draftLoad,
     new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), DRAFT_LOAD_TIMEOUT_MS)),
   ]);
-  if (first.draft) state.session = first.draft;
+  if (first.draft) state.session = hydrateSession(first.draft);
   else if (first.error) state.saveError = `读取草稿失败：${first.error.message}`;
   else if (first.timedOut) {
     draftLoad.then((late) => {
       if (late.draft && !sessionHasSets(state.session)) {
-        state.session = late.draft;
+        state.session = hydrateSession(late.draft);
         render();
       } else if (late.error) {
         state.saveError = `读取草稿失败：${late.error.message}`;
@@ -407,6 +468,7 @@ async function main() {
   }
   requestPersistentStorage(); // 申请持久存储，结果不影响使用
   render();
+  watchRestVisibility();
   if (!isTest) watchDayChange();
   window.addEventListener('hashchange', render);
 }
