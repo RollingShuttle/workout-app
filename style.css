@@ -1,3 +1,5 @@
+/* 外观（用户 2026-10-24 定）：浅色 = iOS 原生风，深色 = 健身房高对比风，跟随系统切换。
+   两套风格的差异全部做成 token：颜色、圆角、字重、秒表字号、标题下划线。组件只引用 token。 */
 :root {
   color-scheme: light dark;
   --bg: #f5f5f7;
@@ -5,24 +7,62 @@
   --muted: #6e6e73;
   --card: #ffffff;
   --line: rgba(60, 60, 67, 0.18);
-  --accent: #007aff; /* iOS systemBlue 浅色 */
+  --accent: #007aff; /* iOS systemBlue */
+  --accent-fg: #ffffff; /* 强调色上的文字 */
   --warn: #ff9f0a;
   --warn-text: #b24d00; /* 浅色背景上可读的橙色文字 */
-  --ready: #248a3d; /* 休息够了：iOS systemGreen 浅色 */
+  --ready: #248a3d; /* 休息够了：iOS systemGreen */
   --danger: #c41e1e;
+  --radius-card: 14px;
+  --radius-btn: 14px;
+  --radius-btn-sm: 12px;
+  --radius-tag: 999px;
+  --radius-sheet: 16px;
+  --card-border: 1px solid var(--line);
+  --active-ring: inset 0 0 0 1px var(--accent); /* 进行中的行：边框 + 内描边共 2px */
+  --active-bg: var(--card);
+  --title-size: 36px;
+  --title-weight: 700;
+  --title-bar: none; /* 标题下的强调色短横线 */
+  --num-weight: 400;
+  --num-weight-active: 600;
+  --btn-weight: 600;
+  --btn-secondary-fg: var(--accent);
+  --btn-secondary-border: var(--line);
+  --rest-size: 40px;
+  --rest-weight: 600;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #000000;
-    --fg: #f5f5f7;
-    --muted: #8e8e93;
-    --card: #1c1c1e;
-    --line: rgba(84, 84, 88, 0.6);
-    --accent: #0a84ff; /* iOS systemBlue 深色 */
-    --warn-text: #ff9f0a;
-    --ready: #30d158; /* iOS systemGreen 深色 */
-    --danger: #ff453a;
+    --bg: #0a0a0b;
+    --fg: #f4f4f1;
+    --muted: #9b9b94;
+    --card: #151517;
+    --line: #2b2b30;
+    --accent: #c8f53a; /* 荧光绿 */
+    --accent-fg: #0a0a0b;
+    --warn: #ffb020;
+    --warn-text: #ffb020;
+    --ready: #c8f53a;
+    --danger: #ff5a4e;
+    --radius-card: 8px;
+    --radius-btn: 8px;
+    --radius-btn-sm: 8px;
+    --radius-tag: 4px;
+    --radius-sheet: 8px;
+    --active-ring: none;
+    --active-bg: #171a10;
+    --title-size: 40px;
+    --title-weight: 800;
+    --title-bar: block;
+    --num-weight: 700;
+    --num-weight-active: 800;
+    --btn-weight: 800;
+    --btn-secondary-fg: var(--fg);
+    --btn-secondary-border: #3a3a41;
+    --rest-size: 48px;
+    --rest-weight: 800;
   }
 }
 
@@ -71,9 +111,20 @@ body {
 }
 
 .today-title {
-  font-size: 34px;
+  font-size: var(--title-size);
+  font-weight: var(--title-weight);
+  letter-spacing: -0.01em;
   line-height: 1.2;
   margin: 4px 0 0;
+}
+
+.today-title::after {
+  content: "";
+  display: var(--title-bar);
+  width: 44px;
+  height: 4px;
+  margin-top: 10px;
+  background: var(--accent);
 }
 
 .today-note {
@@ -90,7 +141,7 @@ body {
   font-size: 12px;
   line-height: 1;
   padding: 4px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-tag);
   border: 1px solid var(--line);
   background: var(--card);
   color: var(--muted);
@@ -103,7 +154,8 @@ body {
 
 .card {
   background: var(--card);
-  border-radius: 14px;
+  border: var(--card-border);
+  border-radius: var(--radius-card);
   padding: 0 16px;
   margin: 12px 0;
 }
@@ -135,6 +187,7 @@ body {
 
 .ex-scheme {
   color: var(--muted);
+  font-weight: var(--num-weight);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -181,12 +234,12 @@ body {
   margin: 0;
   padding: 0 16px;
   border: 0;
-  border-radius: 14px;
+  border-radius: var(--radius-btn);
   background: var(--accent);
-  color: #ffffff;
+  color: var(--accent-fg);
   font: inherit;
   font-size: 20px;
-  font-weight: 600;
+  font-weight: var(--btn-weight);
 }
 
 .btn-primary:active {
@@ -196,10 +249,10 @@ body {
 .btn-secondary {
   min-height: 44px;
   padding: 0 14px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  border: 1px solid var(--btn-secondary-border);
+  border-radius: var(--radius-btn-sm);
   background: transparent;
-  color: var(--accent);
+  color: var(--btn-secondary-fg);
   font: inherit;
   font-size: 16px;
 }
@@ -237,6 +290,7 @@ body {
 .train-name {
   margin: 0;
   font-size: 24px;
+  font-weight: var(--title-weight);
   line-height: 1.2;
 }
 
@@ -254,12 +308,15 @@ body {
 .train-row {
   margin: 0 0 10px;
   padding: 0 14px;
-  border-radius: 14px;
+  border: var(--card-border);
+  border-radius: var(--radius-card);
   background: var(--card);
 }
 
 .train-row-active {
-  box-shadow: inset 0 0 0 2px var(--accent);
+  border-color: var(--accent);
+  box-shadow: var(--active-ring);
+  background: var(--active-bg);
 }
 
 .train-row-done {
@@ -298,13 +355,14 @@ body {
 
 .train-row-count {
   font-size: 20px;
+  font-weight: var(--num-weight);
   font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
 
 .train-row-active .train-row-count {
   color: var(--accent);
-  font-weight: 600;
+  font-weight: var(--num-weight-active);
 }
 
 .train-row-meta {
@@ -371,7 +429,8 @@ body {
   min-height: 64px;
   margin-top: 8px;
   padding: 8px 14px;
-  border-radius: 14px;
+  border: var(--card-border);
+  border-radius: var(--radius-card);
   background: var(--card);
 }
 
@@ -381,9 +440,9 @@ body {
 }
 
 .rest-time {
-  font-size: 40px;
+  font-size: var(--rest-size);
   line-height: 1;
-  font-weight: 600;
+  font-weight: var(--rest-weight);
   font-variant-numeric: tabular-nums;
   color: var(--fg);
 }
@@ -463,7 +522,7 @@ body {
   max-width: 640px;
   margin: 0 auto;
   padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0px));
-  border-radius: 16px 16px 0 0;
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
   background: var(--card);
 }
 

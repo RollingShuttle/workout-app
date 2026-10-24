@@ -15,19 +15,6 @@
   <link rel="apple-touch-icon" href="./icons/icon-180.png">
   <link rel="icon" href="./icons/icon-192.png" type="image/png">
   <link rel="stylesheet" href="./style.css">
-  <script>
-    // 外观预览钩子：?theme=a|b|c 额外加载 themes/<x>.css 覆盖样式。选定风格后并入 style.css，这段和 themes/ 一起删。
-    (function () {
-      var t = new URLSearchParams(location.search).get('theme');
-      if (t && /^[abc]$/.test(t)) {
-        var l = document.createElement('link');
-        l.rel = 'stylesheet';
-        l.href = './themes/' + t + '.css';
-        document.head.appendChild(l);
-        document.documentElement.setAttribute('data-theme-style', t);
-      }
-    })();
-  </script>
 </head>
 <body>
   <main id="app">
