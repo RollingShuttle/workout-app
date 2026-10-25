@@ -3,6 +3,7 @@ import { el, replaceChildren } from './dom.js';
 import { WEEKDAY_LABELS, parseDateKey, formatLoad } from './schedule.js';
 import { formatSets } from './history.js';
 import { findExercise, effectiveExercise, activeDurationMs } from './workout.js';
+import { describeActivity } from './activity.js';
 
 function fmtDate(key) {
   const d = parseDateKey(key);
@@ -16,6 +17,7 @@ function fmtShortDate(key) {
 
 // 时长 = 实际活动时段之和（跨天续练不算成一整天），和结束训练时确认框里的数字一致
 export function durationMinutes(session) {
+  if (session.cardio && typeof session.cardio.minutes === 'number') return session.cardio.minutes; // 打球 / 有氧按填的时长
   if (!session.finishedAt || !session.startedAt) return null;
   return Math.max(1, Math.round(activeDurationMs(session) / 60000));
 }
@@ -28,6 +30,8 @@ function totalSets(session) {
 export function sessionTypeName(session, plan) {
   const t = (plan.dayTemplates || []).find((x) => x.id === session.templateId);
   if (t) return t.name;
+  const c = (plan.cardioTemplates || []).find((x) => x.id === session.cardioId);
+  if (c) return c.name;
   return { cardio: '有氧', ball: '打球', rest: '休息' }[session.activityKind] || session.templateId || '训练';
 }
 
@@ -55,7 +59,7 @@ export function renderHistoryList(root, { sessions, plan, loading, error, onRetr
       el('button', { class: 'hist-row-btn', type: 'button', onclick: () => onOpen(s.id) }, [
         el('span', { class: 'hist-date', text: fmtDate(s.date) }),
         el('span', { class: 'hist-type', text: sessionTypeName(s, plan) }),
-        el('span', { class: 'hist-meta', text: `${minutes == null ? '—' : `${minutes} 分钟`} · ${totalSets(s)} 组` }),
+        el('span', { class: 'hist-meta', text: s.cardio ? describeActivity(s, plan).replace(/^[^ ]+ /, '') : `${minutes == null ? '—' : `${minutes} 分钟`} · ${totalSets(s)} 组` }),
       ]),
     ]);
   });
@@ -93,6 +97,14 @@ export function renderSessionDetail(root, { session, plan, onOpenExercise, onBac
       ]),
     ]);
   });
+  if (session.cardio) {
+    // 打球 / 有氧 / 散步：没有动作，只有一条记录
+    replaceChildren(root, [
+      header(sessionTypeName(session, plan), fmtDate(session.date), onBack),
+      el('section', { class: 'card' }, [el('div', { class: 'row', text: describeActivity(session, plan) })]),
+    ]);
+    return;
+  }
   replaceChildren(root, [
     header(sessionTypeName(session, plan), `${fmtDate(session.date)} · ${minutes == null ? '—' : `${minutes} 分钟`} · ${totalSets(session)} 组`, onBack),
     el('ul', { class: 'hist-list', role: 'list' }, rows),

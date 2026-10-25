@@ -825,3 +825,101 @@ input.num:focus {
 .train-hint-down {
   color: var(--warn-text);
 }
+
+/* 首页：活动按钮行、今日记录、本周小条 */
+.home-actions-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.home-actions-row .btn-secondary {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+}
+
+.today-acts {
+  padding: 12px 16px 4px;
+}
+
+.week {
+  margin: 16px 0 0;
+}
+
+.week-strip {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.week-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 0 6px;
+  border: var(--card-border);
+  border-radius: var(--radius-btn-sm);
+  background: var(--card);
+}
+
+.week-today {
+  border-color: var(--accent);
+}
+
+.week-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.week-mark {
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.week-done .week-mark {
+  color: var(--ready);
+}
+
+.week-ball {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.week-ball-warn {
+  color: var(--warn-text);
+  font-weight: 600;
+}
+
+/* 记录选单里的输入 */
+.sheet-input {
+  border: 1px solid var(--btn-secondary-border);
+  border-radius: var(--radius-btn-sm);
+  background: var(--bg);
+}
+
+.sheet-text {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--btn-secondary-border);
+  border-radius: var(--radius-btn-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.sheet .field {
+  margin-bottom: 10px;
+}
+
+.sheet-save {
+  margin-top: 8px;
+}
+
+.sheet-warning {
+  margin: 0 0 10px;
+}

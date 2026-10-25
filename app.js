@@ -34,8 +34,10 @@ import { putSession, deleteSession, findDraft, listSessions, requestPersistentSt
 import { lastSetsFor, prefillFor } from './history.js';
 import { renderHistoryList, renderSessionDetail, renderExerciseChart } from './history-view.js';
 import { suggestionFor } from './progression.js';
+import { createActivitySession, weekSummary, ballCountThisWeek, BALL_WEEKLY_LIMIT, activitiesOn } from './activity.js';
+import { renderActivitySheet, renderWeekStrip, renderTodayActivities } from './activity-view.js';
 
-const APP_VERSION = '0.9.0';
+const APP_VERSION = '0.10.0';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
 // 全局状态：计划、当前"今天"、进行中的训练、最近一次保存错误（null = 正常）。
@@ -57,6 +59,7 @@ const state = {
   historyError: null, // 读取失败的原因
   inputs: null,
   chartFrom: null, // 从哪次训练详情点进折线页的，返回时回到它
+  activitySheet: null, // 打球 / 有氧 / 散步记录选单打开时的参数
 };
 
 function setStatus(text) {
@@ -114,7 +117,6 @@ function ensureHistory() {
       state.history = rows;
       state.historyReady = true;
       const view = currentView();
-      if (view === 'home') return;
       if (view === 'train') {
         const focused = document.activeElement;
         if (focused && focused.matches('#app input.num') && state.session && state.trainTemplate) {
@@ -267,8 +269,57 @@ function countSets(session, template) {
   return session.entries.reduce((n, e) => n + e.sets.length, 0);
 }
 
+function cardioTemplate(id) {
+  return (state.plan.cardioTemplates || []).find((c) => c.id === id) || null;
+}
+
+function openActivitySheet(kind, cardioId) {
+  const t = cardioTemplate(cardioId);
+  const title = kind === 'ball' ? '今天打球' : kind === 'walk' ? '记一条散步' : `记录有氧 · ${t ? t.name : '二区'}`;
+  const defaultMinutes = t && typeof t.durationMin === 'number' ? t.durationMin : t && t.durationMin ? t.durationMin.max : kind === 'ball' ? 60 : 30;
+  const count = ballCountThisWeek(state.history, state.date);
+  const warning = kind === 'ball' && count >= BALL_WEEKLY_LIMIT ? `本周已打 ${count} 次球，规则是最多 ${BALL_WEEKLY_LIMIT} 次（仍可记录）` : null;
+  state.activitySheet = { kind, cardioId, title, defaultMinutes, warning };
+  render();
+}
+
+async function saveActivity(values) {
+  const sheet = state.activitySheet;
+  if (!sheet) return;
+  const session = createActivitySession({ kind: sheet.kind, cardioId: sheet.cardioId, dateKey: toDateKey(state.date), now: Date.now(), ...values });
+  if (state.isTest) session.test = true;
+  state.activitySheet = null;
+  try {
+    await putSession(session);
+    state.history = [session, ...state.history];
+    state.saveError = null;
+  } catch (err) {
+    state.saveError = `保存失败：${err.message}`;
+  }
+  render();
+}
+
+// 首页按今天的安排给出记录按钮：打球日两个、有氧日一个、休息日散步（可打球的休息日再加打球）
+function activityButtons(day) {
+  const btn = (label, cls, kind, cardioId) =>
+    el('button', { class: cls, type: 'button', onclick: () => openActivitySheet(kind, cardioId) }, label);
+  if (day.kind === 'ballOptional') {
+    return [btn('今天打球', 'btn-primary', 'ball', 'ball'), day.fallback ? btn('不打，做二区', 'btn-secondary link-btn', 'cardio', day.fallback.id) : null];
+  }
+  if (day.kind === 'cardio' && day.cardio) return [btn('记录有氧', 'btn-primary', 'cardio', day.cardio.id)];
+  if (day.kind === 'rest') {
+    return [btn('记一条散步', 'btn-secondary link-btn', 'walk', 'walk'), day.ballOptional ? btn('今天打球', 'btn-secondary link-btn', 'ball', 'ball') : null];
+  }
+  return [];
+}
+
 function renderHome(root, day) {
   const { plan, date, isTest } = state;
+  ensureHistory();
+  const todayKey = toDateKey(date);
+  const summary = weekSummary(state.history, date);
+  const ballCount = ballCountThisWeek(state.history, date);
+  const todayActs = activitiesOn(state.history, todayKey);
   // 别天的、一组都没有的训练只是进训练页又退出来的空壳，回首页就丢掉
   if (state.session && !state.session.finishedAt && !sessionHasInput(state.session) && !sessionMatches(state.session, day)) {
     state.session = null;
@@ -296,7 +347,7 @@ function renderHome(root, day) {
       ...day.problems.map((p) => el('p', { class: 'problem', text: p })),
     ]),
     draft && !draftIsToday ? renderDraftCard(draft) : null,
-    el('div', { class: 'home-links' }, [el('a', { class: 'btn-secondary link-btn', href: '#history' }, '历史记录')]),
+    renderTodayActivities(todayActs, plan),
     day.kind === 'strength' && !(draft && !draftIsToday)
       ? el('div', { class: 'home-actions' }, [
           el(
@@ -306,7 +357,17 @@ function renderHome(root, day) {
           ),
         ])
       : null,
+    day.kind !== 'strength' ? el('div', { class: 'home-actions home-actions-row' }, activityButtons(day)) : null,
+    renderWeekStrip({ summary, todayKey, ballCount, limit: BALL_WEEKLY_LIMIT }),
+    el('div', { class: 'home-links' }, [el('a', { class: 'btn-secondary link-btn', href: '#history' }, '历史记录')]),
   ]);
+  if (state.activitySheet) {
+    renderActivitySheet(root, {
+      ...state.activitySheet,
+      onSave: saveActivity,
+      onClose: () => { state.activitySheet = null; render(); },
+    });
+  }
 }
 
 /* ---------- 训练模式 ---------- */
@@ -573,6 +634,7 @@ function render() {
   stopRestTicker();
   state.trainTemplate = null;
   state.picker = null; // 选单开着时离开训练页，别让它下次再弹出来
+  if (view !== 'home') state.activitySheet = null;
   if (view === 'home') renderHome(root, day);
   else renderHistoryView(root, view);
 }
