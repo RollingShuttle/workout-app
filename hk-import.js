@@ -9,9 +9,10 @@ import { toDateKey } from './schedule.js';
 export const HK_SOURCE = 'health';
 
 // 羽毛球 → 打球；步行类 → 按心率猜二区 / 散步；骑行、椭圆机等机器 → 二区
+// 中英文系统的叫法都认（英文系统的快捷指令给的是 Badminton / Walking / Outdoor Walk / Cycling / Elliptical …）
 const BALL_TYPES = ['羽毛球', 'badminton'];
-const WALK_TYPES = ['步行', '户外步行', '室内步行', '徒步', '健走', 'walking', 'hiking'];
-const MACHINE_TYPES = ['骑行', '户外骑行', '室内骑行', '椭圆机', '划船机', '楼梯机', '踏步机', 'cycling', 'elliptical', 'rowing', 'stair'];
+const WALK_TYPES = ['步行', '徒步', '健走', 'walk', 'hiking', 'hike'];
+const MACHINE_TYPES = ['骑行', '椭圆机', '划船机', '楼梯机', '踏步机', 'cycl', 'bike', 'biking', 'elliptical', 'rowing', 'rower', 'stair', 'stepper'];
 
 function parseLine(line, lineNo) {
   const parts = line.split('|').map((s) => s.trim());

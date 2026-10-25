@@ -7,35 +7,40 @@
 快捷指令每次体能训练写一行，用 `|` 分开四段：类型、开始时间、结束时间、平均心率（可以空）。
 
 ```
-羽毛球|2026-10-24T19:00:00+08:00|2026-10-24T20:05:00+08:00|135
-户外步行|2026-10-25T08:10:00+08:00|2026-10-25T08:45:00+08:00|128
+Badminton|2026-10-24T19:00:00-07:00|2026-10-24T20:05:00-07:00|135
+Outdoor Walk|2026-10-25T08:10:00-07:00|2026-10-25T08:45:00-07:00|128
 ```
 
-App 导入时：羽毛球默认记为打球；骑行、椭圆机等记为二区；步行按平均心率猜，115–145 之间记为二区，否则记为散步。每条都能在预览里改，也能跳过。
+App 导入时：Badminton / 羽毛球默认记为打球；Cycling、Elliptical、Rowing 等记为二区；Walking / Hiking 按平均心率猜，115–145 之间记为二区，否则记为散步。每条都能在预览里改，也能跳过。
 
-## 搭建步骤（iOS 17 / 18，中文系统）
+## 搭建步骤（英文系统，iOS 17 / 18）
 
-1. 打开"快捷指令"App，右上角 **+** 新建，起名"导出运动记录"。
-2. 添加操作 **查找体能训练**（在"健康"分类里）。
-   - 加一个筛选条件：**开始日期** **在过去** **30 天**（想多导就改大）。
-   - 排序方式：开始日期，最新在前。不限制数量。
-3. 添加操作 **重复每个项目**，输入选"体能训练"（上一步的结果）。下面的 4–8 步都放在这个重复块里面。
-4. 添加 **获取体能训练的详细信息**：输入"重复项目"，详细信息选 **开始日期**。再加一个 **格式化日期**：日期格式选 **ISO 8601**，勾上"包含 ISO 8601 时间"。把结果 **设定变量** 叫 `开始`。
-5. 同样再做一遍，详细信息选 **结束日期**，格式化后设定变量 `结束`。
-6. 添加 **获取体能训练的详细信息**：详细信息选 **体能训练类型**，设定变量 `类型`。
-7. 平均心率：添加 **查找健康样本**，类型选 **心率**，加两个筛选：**开始日期 晚于** 变量 `开始`、**开始日期 早于** 变量 `结束`。再添加 **计算统计**：操作 **平均值**，输入是上一步的健康样本。把结果 **设定变量** 叫 `心率`。（这一步最慢，不想要心率可以整段删掉，App 里再手填。）
-8. 添加 **文本**，内容写成一行：`类型|开始|结束|心率`，四个都用变量插进去（点"类型"等变量名从键盘上方选）。然后 **添加到变量** `行`。
-9. 重复块结束后，添加 **合并文本**：输入变量 `行`，用 **换行** 分隔。
-10. 添加 **存储文件**：服务选 **iCloud Drive**，关掉"询问存储位置"，目标路径填 `/Shortcuts/运动记录.txt`，打开"覆盖已有"。
-11. 第一次运行会弹好几次健康数据的授权，全部允许。跑完后"文件"App 的 iCloud Drive → Shortcuts 里就有 `运动记录.txt`。
+1. Open **Shortcuts**, tap **+** to create a new shortcut, name it "Export Workouts".
+2. Add **Find Workouts** (Health).
+   - Add a filter: **Start Date** · **is in the last** · **30 days** (bigger if you want more history).
+   - Sort by **Start Date**, Order **Latest First**. Leave Limit off.
+3. Add **Repeat with Each**, input = **Workouts** (the result of step 2). Steps 4–8 go inside this Repeat block.
+4. Add **Get Details of Workouts**: input **Repeat Item**, Detail **Start Date**. Then add **Format Date**: Date Format **ISO 8601**, turn on **Include ISO 8601 Time**. Add **Set Variable** → name it `start`.
+5. Same again for **End Date** → Format Date (ISO 8601 + time) → Set Variable `end`.
+6. Add **Get Details of Workouts**: Detail **Workout Type** → Set Variable `type`.
+7. Average heart rate: add **Find Health Samples**, Type **Heart Rate**, two filters: **Start Date is after** `start`, **Start Date is before** `end`. Then add **Calculate Statistics**: Operation **Average**, input = the health samples. Set Variable `hr`. (Slowest step. If it errors or you don't need heart rate, delete this whole step and leave the field empty.)
+8. Add **Text** with one line: `type|start|end|hr` — insert the four variables (tap the variable names above the keyboard). Then **Add to Variable** `lines`.
+9. After the Repeat block ends, add **Combine Text**: input `lines`, Separator **New Lines**.
+10. Add **Save File**: Service **iCloud Drive**, turn off **Ask Where to Save**, Destination Path `/Shortcuts/workouts.txt`, turn on **Overwrite If File Exists**.
+11. Run it once. It will ask for Health permissions several times — allow all. Afterwards the file is in **Files → iCloud Drive → Shortcuts → workouts.txt**.
+
+## 搭建步骤（中文系统）
+
+动作名对照：Find Workouts = 查找体能训练，Repeat with Each = 重复每个项目，Get Details of Workouts = 获取体能训练的详细信息，Format Date = 格式化日期，Set Variable = 设定变量，Find Health Samples = 查找健康样本，Calculate Statistics = 计算统计，Text = 文本，Add to Variable = 添加到变量，Combine Text = 合并文本，Save File = 存储文件。其余步骤完全一样。
 
 ## 导入
 
-App 首页底部 → 设置 → 数据 → **导入 Apple Health 运动记录** → 选 `运动记录.txt`。预览里每条可以改"记为"，确认后入库。已导入过的和当天已手动记过同类的，默认跳过。
+App 首页底部 → 设置 → 数据 → **导入 Apple Health 运动记录** → 选 `workouts.txt`。预览里每条可以改"记为"，确认后入库。已导入过的和当天已手动记过同类的，默认跳过。
 
 ## 常见问题
 
-- 快捷指令里找不到"查找体能训练"：在操作搜索框搜"体能训练"。
-- 心率那一步报错或为空：Apple Watch 没戴、或该次训练没有心率样本，导入时心率留空即可。
-- 导入提示"时间读不出来"：第 4、5 步的格式化日期没选 ISO 8601。
-- Zone 3 以上的分钟数 Apple Health 不直接存，导入后留空，需要的话在历史里看着手表的数据手填。
+- 找不到 Find Workouts：在动作搜索框搜 "workout"。
+- 心率为空或报错：那次训练没戴表、没有心率样本，导入时心率留空即可。
+- 导入提示"时间读不出来"：第 4、5 步的 Format Date 没选 ISO 8601，或没打开 Include ISO 8601 Time。
+- 类型猜错或落到"跳过"：在预览的下拉里手动改。英文系统给的类型名是 Badminton、Walking、Outdoor Walk、Cycling、Elliptical 这类，App 都认。
+- Zone 3 以上的分钟数 Apple Health 不直接存，导入后留空，需要的话手填。
