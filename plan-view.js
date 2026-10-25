@@ -249,7 +249,7 @@ export function renderExerciseSheet(root, { title, exercise, defaultRestSeconds 
   const body = [
     textField('ex-name', '名称', ex.name, { maxlength: '30' }),
     textField('ex-muscle', '肌群（可选）', ex.muscle, { maxlength: '20' }),
-    el('div', { class: 'set-inputs' }, [numField('ex-weight', `重量 ${displayUnit()}（空 = 首次做时填）`, load.bodyweight ? null : lbToDisplay(load.value), { step: String(weightStep().step), min: '0' }), textField('ex-label', '重量显示文字（可选）', load.label, { maxlength: '20', placeholder: '如 120 每边' })]),
+    el('div', { class: 'set-inputs' }, [numField('ex-weight', `重量 ${displayUnit()}（空 = 首次做时填）`, load.bodyweight ? null : lbToDisplay(load.value), { step: 'any', min: '0' }), textField('ex-label', '重量显示文字（可选）', load.label, { maxlength: '20', placeholder: '如 120 每边' })]),
     el('div', { class: 'plan-checks' }, [checkField('ex-bodyweight', '自重', load.bodyweight), checkField('ex-assisted', '助力（数值越小越难）', load.assisted), checkField('ex-perSideLoad', '每边配重', load.perSideLoad), checkField('ex-perSide', '每侧各做', ex.perSide)]),
     el('div', { class: 'set-inputs' }, [numField('ex-sets-min', '组数 最少', (ex.sets || {}).min ?? 3, { step: '1', min: '1' }), numField('ex-sets-max', '组数 目标', (ex.sets || {}).max ?? 3, { step: '1', min: '1' })]),
     el('div', { class: 'set-inputs' }, [numField('ex-reps-min', '次数 下限', (ex.reps || {}).min ?? 6, { step: '1', min: '1' }), numField('ex-reps-max', '次数 上限', (ex.reps || {}).max ?? 10, { step: '1', min: '1' })]),

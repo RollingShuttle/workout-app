@@ -27,14 +27,15 @@ function toNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-// 一个数字输入框 + 左右 ± 按钮。改值只改 DOM 和 handlers.onInput 里的暂存，不重画整页（否则会丢焦点）
-function numberField({ id, label, value, delta, step, min, inputmode, onChange }) {
+// 一个数字输入框 + 左右 ± 按钮。改值只改 DOM 和 handlers.onInput 里的暂存，不重画整页（否则会丢焦点）。
+// 输入框可以手动打任意数（有的器械不是 1 / 2.5 一档），所以 step="any"；± 只在当前值上加减，不把它对齐到档位。
+function numberField({ id, label, value, delta, min, inputmode, onChange }) {
   const input = el('input', {
     class: 'num',
     id,
     type: 'number',
     inputmode,
-    step: String(step),
+    step: 'any',
     min: String(min),
     value: value == null ? '' : String(value),
     oninput: () => onChange(toNumber(input.value)),
@@ -43,7 +44,7 @@ function numberField({ id, label, value, delta, step, min, inputmode, onChange }
     const cur = toNumber(input.value);
     if (cur == null && sign < 0) return; // 空着的必填项按"−"不要变成 0
     const base = cur ?? 0;
-    const next = Math.max(min, Math.round((base + sign * delta) / step) * step);
+    const next = Math.max(min, base + sign * delta);
     input.value = String(Number(next.toFixed(2)));
     onChange(toNumber(input.value));
   };
@@ -81,9 +82,9 @@ function renderSetInputs(entry, base, ex, ctx, handlers) {
   const last = ctx.last(entry);
   const fields = [];
   if (!bodyweight) {
-    fields.push(numberField({ id: `inp-${base.id}-weight`, label: weightLabel, value: weightVal, delta: weightStep().delta, step: weightStep().step, min: 0, inputmode: 'decimal', onChange: onChange('weight') }));
+    fields.push(numberField({ id: `inp-${base.id}-weight`, label: weightLabel, value: weightVal, delta: weightStep().delta, min: 0, inputmode: 'decimal', onChange: onChange('weight') }));
   }
-  fields.push(numberField({ id: `inp-${base.id}-reps`, label: '次数', value: repsVal, delta: 1, step: 1, min: 1, inputmode: 'numeric', onChange: onChange('reps') }));
+  fields.push(numberField({ id: `inp-${base.id}-reps`, label: '次数', value: repsVal, delta: 1, min: 1, inputmode: 'numeric', onChange: onChange('reps') }));
   return el('div', { class: 'set-entry' }, [
     el('p', { class: 'last-ref', text: lastRefText(last, bodyweight, ctx.historyLoaded) }),
     el('div', { class: `set-inputs${bodyweight ? ' set-inputs-single' : ''}` }, fields),

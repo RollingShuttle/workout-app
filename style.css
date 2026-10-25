@@ -82,6 +82,18 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* 连点 ± 按钮时 iOS 会当成双击放大页面：manipulation = 只留滚动和双指缩放，去掉双击缩放。
+ * 输入框字号都 ≥ 16px，聚焦时 iOS 也不会自动放大。 */
+html,
+body,
+button,
+input,
+select,
+summary,
+a {
+  touch-action: manipulation;
+}
+
 body {
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
