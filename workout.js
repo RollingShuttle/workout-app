@@ -13,14 +13,18 @@ export function createSession(template, dateKey, now) {
     lastSetCompletedAt: null, // 上一组真正完成的时间，算 restTakenSeconds 用；重置秒表不动它
     lastSetExerciseId: null, // 上一组是哪个动作，秒表的参考休息时长按它取
     restStartedAt: null, // 组间秒表的起点：完成一组 = 那组的时间；按"重置" = 按下的时间
-    entries: (template.exercises || []).map((ex) => ({
-      exerciseId: ex.id,
-      usedAlternate: null, // 选用替代动作时记替代动作名（spec 2.3）
-      sets: [],
-      status: 'pending', // pending | active | done | skipped
-      extraSets: 0, // "再加一组"累计
-      endedEarly: false, // 做满 min 组后手动"结束动作"
-    })),
+    entries: (template.exercises || []).map(newEntry),
+  };
+}
+
+function newEntry(ex) {
+  return {
+    exerciseId: ex.id,
+    usedAlternate: null, // 选用替代动作时记替代动作名（spec 2.3）
+    sets: [],
+    status: 'pending', // pending | active | done | skipped
+    extraSets: 0, // "再加一组"累计
+    endedEarly: false, // 做满 min 组后手动"结束动作"
   };
 }
 
@@ -36,7 +40,7 @@ export function findEntry(session, id) {
 export function targetSets(exercise, entry) {
   const sets = exercise.sets || {};
   const base = sets.max ?? sets.min ?? 1;
-  return base + (entry ? entry.extraSets : 0);
+  return base + (entry ? entry.extraSets || 0 : 0);
 }
 
 // 已完成组数。每侧动作也是一次"完成一组"算一组（用户决定：做完两侧再按，只要一个计时；
@@ -184,6 +188,19 @@ export function undoLastSet(session, template, id) {
 }
 
 // 旧版（v0.4）草稿只有 lastSetCompletedAt：补上秒表字段，重开后秒表才能接着算
+// 计划在训练中途被改过时，让草稿的 entries 跟上模板：新动作补一条 pending，被删且一组都没记的去掉。
+// 已有记录的被删动作保留（历史要完整），没有变化就返回原对象。
+export function syncEntries(session, template) {
+  const ids = new Set((template.exercises || []).map((ex) => ex.id));
+  const kept = session.entries.filter((e) => ids.has(e.exerciseId) || e.sets.length > 0);
+  const have = new Set(kept.map((e) => e.exerciseId));
+  const added = (template.exercises || [])
+    .filter((ex) => !have.has(ex.id))
+    .map(newEntry);
+  if (kept.length === session.entries.length && added.length === 0) return session;
+  return { ...session, entries: [...kept, ...added] };
+}
+
 export function hydrateSession(session) {
   const latest = latestSet(session.entries);
   return {

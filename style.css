@@ -943,3 +943,76 @@ input.num:focus {
   width: 100%;
   min-height: 48px;
 }
+
+/* 计划编辑页 */
+.plan-section {
+  margin: 14px 0 0;
+}
+
+.plan-section-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.plan-day-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.plan-toggle,
+.plan-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 12px 0 0;
+  font-size: 15px;
+}
+
+.plan-toggle input,
+.plan-check input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--accent);
+}
+
+.plan-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 8px;
+}
+
+.plan-ex-actions {
+  display: flex;
+  gap: 8px;
+  padding: 0 14px 12px;
+}
+
+.plan-ex-actions .btn-secondary {
+  min-height: 40px;
+  padding: 0 12px;
+  font-size: 15px;
+}
+
+.plan-delete {
+  color: var(--danger);
+}
+
+.sheet-select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--btn-secondary-border);
+  border-radius: var(--radius-btn-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.sheet .field[hidden] {
+  display: none;
+}

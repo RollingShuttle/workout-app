@@ -28,6 +28,7 @@ import {
   findEntry,
   sessionHasInput,
   activeDurationMs,
+  syncEntries,
 } from './workout.js';
 import { renderTrain, renderTrainUnavailable, renderAlternateSheet, updateRestClock, updateLastRef } from './train-view.js';
 import { putSession, deleteSession, findDraft, listSessions, requestPersistentStorage } from './db.js';
@@ -37,8 +38,22 @@ import { suggestionFor } from './progression.js';
 import { createActivitySession, weekSummary, ballCountThisWeek, BALL_WEEKLY_LIMIT, activitiesOn } from './activity.js';
 import { renderActivitySheet, renderWeekStrip, renderTodayActivities } from './activity-view.js';
 import { loadStoredPlan, savePlan, blankPlanFrom } from './plan-store.js';
+import {
+  setWeekday,
+  upsertOverride,
+  removeOverride,
+  setTemplateEnabled,
+  updateExercise,
+  moveExercise,
+  addExercise,
+  removeExercise,
+  newExerciseId,
+  exerciseFromForm,
+  parseAlternates,
+} from './plan-edit.js';
+import { renderPlanOverview, renderPlanDay, renderAssignmentSheet, renderExerciseSheet } from './plan-view.js';
 
-const APP_VERSION = '0.11.0';
+const APP_VERSION = '0.12.0';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
 // 全局状态：计划、当前"今天"、进行中的训练、最近一次保存错误（null = 正常）。
@@ -63,6 +78,7 @@ const state = {
   activitySheet: null, // 打球 / 有氧 / 散步记录选单打开时的参数
   builtinPlan: null, // training-plan.json 的内容，只作内置模板
   firstRun: false, // 库里还没有计划：显示首次启动页
+  planSheet: null, // 计划编辑页打开的表单：{ kind: 'weekday' | 'override' | 'exercise', ... }
 };
 
 function setStatus(text) {
@@ -91,14 +107,25 @@ function findTemplate(id) {
   return (state.plan.dayTemplates || []).find((t) => t.id === id) || null;
 }
 
-// 路由：#train 训练页；#history 历史列表；#history/<id> 单次详情；#exercise/<id> 动作折线；其余首页
+// 路由：#train 训练页；#history 历史列表；#history/<id> 单次详情；#exercise/<id> 动作折线；
+// #plan 计划编辑总览；#plan/day/<id> 某个训练日的动作列表；其余首页
 function currentView() {
   const h = location.hash;
   if (h === '#train') return 'train';
   if (h === '#history') return 'history';
   if (h.startsWith('#history/')) return 'session';
   if (h.startsWith('#exercise/')) return 'exercise';
+  if (h === '#plan') return 'plan';
+  if (h.startsWith('#plan/day/')) return 'planDay';
   return 'home';
+}
+
+function planDayParam() {
+  try {
+    return decodeURIComponent(location.hash.slice('#plan/day/'.length));
+  } catch (_) {
+    return null;
+  }
 }
 
 function routeParam() {
@@ -349,7 +376,7 @@ function renderHome(root, day) {
       renderBody(day, plan),
       ...day.problems.map((p) => el('p', { class: 'problem', text: p })),
     ]),
-    plan.blank ? el('p', { class: 'today-note today-note-plain', text: '现在是空白计划，每天都显示休息。计划编辑做好后可以在这里加训练日。' }) : null,
+    plan.blank ? el('p', { class: 'today-note today-note-plain', text: '现在是空白计划，每天都显示休息。到「计划」里加训练日和每周安排。' }) : null,
     draft && !draftIsToday ? renderDraftCard(draft) : null,
     renderTodayActivities(todayActs, plan),
     day.kind === 'strength' && !(draft && !draftIsToday)
@@ -363,7 +390,10 @@ function renderHome(root, day) {
       : null,
     day.kind !== 'strength' ? el('div', { class: 'home-actions home-actions-row' }, activityButtons(day)) : null,
     renderWeekStrip({ summary, todayKey, ballCount, limit: BALL_WEEKLY_LIMIT }),
-    el('div', { class: 'home-links' }, [el('a', { class: 'btn-secondary link-btn', href: '#history' }, '历史记录')]),
+    el('div', { class: 'home-links' }, [
+      el('a', { class: 'btn-secondary link-btn', href: '#history' }, '历史记录'),
+      el('a', { class: 'btn-secondary link-btn', href: '#plan' }, '计划'),
+    ]),
   ]);
   if (state.activitySheet) {
     renderActivitySheet(root, {
@@ -461,6 +491,12 @@ function renderTrainView(root, day) {
     persistSession(next);
     render();
   };
+  // 计划在训练中途被改过：给新加的动作补一条 entry，没有记录的被删动作去掉；有记录的保留（行里会提示找不到）
+  const synced = syncEntries(state.session, template);
+  if (synced !== state.session) {
+    state.session = synced;
+    if (sessionHasInput(synced)) persistSession(synced);
+  }
   state.trainTemplate = template;
   ensureHistory();
   // 草稿里带着上次没提交的输入值（页面被 iOS 回收后重载）：恢复成暂存
@@ -627,6 +663,117 @@ function renderHistoryView(root, view) {
   });
 }
 
+/* ---------- 计划编辑（spec 3.5） ---------- */
+
+// 每次改动：先改内存里的计划并重画（立刻生效），再写库；写失败显示在页面上
+function applyPlan(next) {
+  state.plan = next;
+  state.planSheet = null;
+  render();
+  savePlan(next).then(
+    () => {
+      if (state.saveError) {
+        state.saveError = null;
+        render();
+      }
+    },
+    (err) => {
+      state.saveError = `计划没能保存：${err.message}`;
+      render();
+    }
+  );
+}
+
+function openPlanSheet(sheet) {
+  state.planSheet = sheet;
+  render();
+}
+
+function closePlanSheet() {
+  state.planSheet = null;
+  render();
+}
+
+const EMPTY_ASSIGN = { type: 'rest', id: null, fallbackId: null, ballOptional: false, note: '' };
+
+function renderPlanView(root, view) {
+  const plan = state.plan;
+  if (view === 'plan') {
+    renderPlanOverview(root, {
+      plan,
+      saveError: state.saveError,
+      onEditWeekday: (weekday, assign) => openPlanSheet({ kind: 'weekday', weekday, assign }),
+      onAddOverride: () => openPlanSheet({ kind: 'override', date: toDateKey(state.date), assign: EMPTY_ASSIGN, isNew: true }),
+      onEditOverride: (date, assign) => openPlanSheet({ kind: 'override', date, assign, isNew: false }),
+      onOpenDay: (id) => { location.hash = `#plan/day/${encodeURIComponent(id)}`; },
+      onToggleTemplate: (id, enabled) => applyPlan(setTemplateEnabled(plan, id, enabled)),
+      onBack: () => { location.hash = ''; },
+    });
+    const sheet = state.planSheet;
+    if (sheet && sheet.kind === 'weekday') {
+      renderAssignmentSheet(root, {
+        title: `${WEEKDAY_LABELS[sheet.weekday]} 的安排`,
+        plan,
+        assign: sheet.assign,
+        withDate: false,
+        onSave: ({ assign }) => applyPlan(setWeekday(plan, sheet.weekday, assign)),
+        onClose: closePlanSheet,
+      });
+    } else if (sheet && sheet.kind === 'override') {
+      renderAssignmentSheet(root, {
+        title: sheet.isNew ? '新增调课' : '修改调课',
+        plan,
+        assign: sheet.assign,
+        date: sheet.date,
+        withDate: true,
+        allowDelete: !sheet.isNew,
+        onSave: ({ date, assign }) => {
+          // 改了日期 = 原日期那条删掉、新日期那条写入
+          const base = !sheet.isNew && date !== sheet.date ? removeOverride(plan, sheet.date) : plan;
+          applyPlan(upsertOverride(base, date, assign));
+        },
+        onDelete: () => applyPlan(removeOverride(plan, sheet.date)),
+        onClose: closePlanSheet,
+      });
+    }
+    return;
+  }
+  // #plan/day/<id>
+  const templateId = planDayParam();
+  const template = findTemplate(templateId);
+  if (!template) {
+    renderTrainUnavailable(root, { message: '找不到这个训练日。', onBack: () => { location.hash = '#plan'; } });
+    return;
+  }
+  renderPlanDay(root, {
+    template,
+    saveError: state.saveError,
+    onEditExercise: (exerciseId) => openPlanSheet({ kind: 'exercise', templateId, exerciseId }),
+    onAdd: () => openPlanSheet({ kind: 'exercise', templateId, exerciseId: null }),
+    onMove: (exerciseId, dir) => applyPlan(moveExercise(plan, templateId, exerciseId, dir)),
+    onRemove: (exerciseId) => {
+      const ex = findExercise(template, exerciseId);
+      if (!window.confirm(`从「${template.name}」里删掉「${ex ? ex.name : exerciseId}」？已保存的记录不受影响。`)) return;
+      applyPlan(removeExercise(plan, templateId, exerciseId));
+    },
+    onBack: () => { location.hash = '#plan'; },
+  });
+  const sheet = state.planSheet;
+  if (sheet && sheet.kind === 'exercise') {
+    const existing = sheet.exerciseId ? findExercise(template, sheet.exerciseId) : null;
+    renderExerciseSheet(root, {
+      title: existing ? `修改 · ${existing.name}` : '新增动作',
+      exercise: existing,
+      onSave: (form) => {
+        const ex = exerciseFromForm({ ...form, alternates: parseAlternates(form.alternatesText) }, existing || {});
+        if (existing) applyPlan(updateExercise(plan, templateId, existing.id, ex));
+        else applyPlan(addExercise(plan, templateId, { id: newExerciseId(Date.now()), ...ex }));
+      },
+      onClose: closePlanSheet,
+    });
+  }
+}
+
 // 首次启动：选"载入内置计划"或"从空白计划开始"，选了就写库
 async function choosePlan(plan) {
   try {
@@ -671,7 +818,9 @@ function render() {
   state.trainTemplate = null;
   state.picker = null; // 选单开着时离开训练页，别让它下次再弹出来
   if (view !== 'home') state.activitySheet = null;
+  if (view !== 'plan' && view !== 'planDay') state.planSheet = null;
   if (view === 'home') renderHome(root, day);
+  else if (view === 'plan' || view === 'planDay') renderPlanView(root, view);
   else renderHistoryView(root, view);
 }
 
