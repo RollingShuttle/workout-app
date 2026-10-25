@@ -1,6 +1,7 @@
 // train-view.js — 训练模式页面。只画 DOM；状态改动通过回调交给 app.js。
 import { el, replaceChildren } from './dom.js';
 import { formatLoad, formatRange } from './schedule.js';
+import { formatSets } from './history.js';
 import {
   findExercise,
   findEntry,
@@ -14,7 +15,111 @@ import {
   restReferenceSeconds,
 } from './workout.js';
 
-function renderRow(entry, template, handlers) {
+function fmtDateKey(key) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key || '');
+  return m ? `${Number(m[2])}月${Number(m[3])}日` : key || '';
+}
+
+function toNumber(value) {
+  if (value === '' || value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+// 一个数字输入框 + 左右 ± 按钮。改值只改 DOM 和 handlers.onInput 里的暂存，不重画整页（否则会丢焦点）
+function numberField({ id, label, value, delta, step, min, inputmode, onChange }) {
+  const input = el('input', {
+    class: 'num',
+    id,
+    type: 'number',
+    inputmode,
+    step: String(step),
+    min: String(min),
+    value: value == null ? '' : String(value),
+    oninput: () => onChange(toNumber(input.value)),
+  });
+  const bump = (sign) => {
+    const cur = toNumber(input.value);
+    if (cur == null && sign < 0) return; // 空着的必填项按"−"不要变成 0
+    const base = cur ?? 0;
+    const next = Math.max(min, Math.round((base + sign * delta) / step) * step);
+    input.value = String(Number(next.toFixed(2)));
+    onChange(toNumber(input.value));
+  };
+  return el('div', { class: 'field' }, [
+    el('label', { class: 'field-label', for: id, text: label }),
+    el('div', { class: 'stepper' }, [
+      el('button', { class: 'step', type: 'button', 'aria-label': `${label} 减 ${delta}`, onclick: () => bump(-1) }, '−'),
+      input,
+      el('button', { class: 'step', type: 'button', 'aria-label': `${label} 加 ${delta}`, onclick: () => bump(1) }, '+'),
+    ]),
+  ]);
+}
+
+function renderSetInputs(entry, base, ex, ctx, handlers) {
+  const load = ex.load || {};
+  const bodyweight = Boolean(load.bodyweight);
+  const setIndex = entry.sets.length;
+  const alt = entry.usedAlternate ?? null;
+  const pre = ctx.prefill(entry, ex);
+  const t = ctx.inputs;
+  // 暂存值只在同一次训练、同一动作、同一替代口径、同一组号下才拿来用
+  const typed =
+    t && t.sessionId === ctx.sessionId && t.exerciseId === base.id && (t.usedAlternate ?? null) === alt && t.setIndex === setIndex
+      ? t
+      : {};
+  const weightVal = 'weight' in typed ? typed.weight : pre.weight;
+  const repsVal = 'reps' in typed ? typed.reps : pre.reps;
+  const weightLabel = load.assisted ? '助力 lb' : load.perSideLoad ? '每边 lb' : '重量 lb';
+  const errEl = el('p', { class: 'set-error', 'aria-live': 'polite' });
+  const onChange = (field) => (value) => {
+    errEl.textContent = ''; // 改值就清提示；下次报错是从空变有，VoiceOver 才会读
+    handlers.onInput({ sessionId: ctx.sessionId, exerciseId: base.id, usedAlternate: alt, setIndex }, field, value);
+  };
+  const last = ctx.last(entry);
+  const fields = [];
+  if (!bodyweight) {
+    fields.push(numberField({ id: `inp-${base.id}-weight`, label: weightLabel, value: weightVal, delta: 5, step: 0.5, min: 0, inputmode: 'decimal', onChange: onChange('weight') }));
+  }
+  fields.push(numberField({ id: `inp-${base.id}-reps`, label: '次数', value: repsVal, delta: 1, step: 1, min: 1, inputmode: 'numeric', onChange: onChange('reps') }));
+  return el('div', { class: 'set-entry' }, [
+    el('p', { class: 'last-ref', text: lastRefText(last, bodyweight, ctx.historyLoaded) }),
+    el('div', { class: `set-inputs${bodyweight ? ' set-inputs-single' : ''}` }, fields),
+    errEl,
+  ]);
+}
+
+function lastRefText(last, bodyweight, historyLoaded) {
+  if (last) return `上次（${fmtDateKey(last.date)}）：${formatSets(last.sets, { bodyweight })}`;
+  return historyLoaded ? '没有上次记录' : '上次记录读取中…';
+}
+
+// 历史读回来时只更新"上次"那一行，不重画整页（用户可能正在输入框里打字）
+export function updateLastRef(root, session, template, lastFor) {
+  root.querySelectorAll('.train-row-active').forEach((rowEl) => {
+    const entry = session.entries.find((e) => e.exerciseId === rowEl.dataset.exercise);
+    const base = entry && findExercise(template, entry.exerciseId);
+    const line = rowEl.querySelector('.last-ref');
+    if (!entry || !base || !line) return;
+    const ex = effectiveExercise(entry, base);
+    line.textContent = lastRefText(lastFor(entry), Boolean((ex.load || {}).bodyweight), true);
+  });
+}
+
+// 点"完成一组"时从输入框读值并校验；不合法就在行内提示，不记组
+function readSetInputs(rowEl, base, ex) {
+  const load = ex.load || {};
+  const bodyweight = Boolean(load.bodyweight);
+  const weightEl = rowEl.querySelector(`#inp-${CSS.escape(base.id)}-weight`);
+  const repsEl = rowEl.querySelector(`#inp-${CSS.escape(base.id)}-reps`);
+  const weight = bodyweight ? null : toNumber(weightEl && weightEl.value);
+  const reps = toNumber(repsEl && repsEl.value);
+  if (!bodyweight && (weight == null || weight < 0)) return { error: '先填这一组的重量' };
+  if (reps == null || reps < 1 || !Number.isInteger(reps)) return { error: '先填这一组的次数（整数）' };
+  return { weight, reps };
+}
+
+function renderRow(entry, template, handlers, ctx) {
   const base = findExercise(template, entry.exerciseId);
   if (!base) {
     return el('li', { class: 'train-row' }, el('p', { class: 'problem', text: `找不到动作 ${entry.exerciseId}` }));
@@ -51,10 +156,26 @@ function renderRow(entry, template, handlers) {
   );
 
   const children = [head];
+  if (entry.sets.length > 0 && !active) {
+    children.push(el('div', { class: 'train-row-sets', text: formatSets(entry.sets, { bodyweight: Boolean((ex.load || {}).bodyweight) }) }));
+  }
   if (active) {
+    const complete = () => {
+      const rowEl = document.querySelector(`[data-exercise="${CSS.escape(base.id)}"]`);
+      if (!rowEl) return;
+      const values = readSetInputs(rowEl, base, ex);
+      const errEl = rowEl.querySelector('.set-error');
+      if (values.error) {
+        if (errEl) errEl.textContent = values.error;
+        return;
+      }
+      if (errEl) errEl.textContent = '';
+      handlers.onCompleteSet(base.id, { weight: values.weight, reps: values.reps });
+    };
     children.push(
       el('div', { class: 'train-actions' }, [
-        el('button', { class: 'btn-primary', type: 'button', onclick: () => handlers.onCompleteSet(base.id) }, '完成一组'),
+        renderSetInputs(entry, base, ex, ctx, handlers),
+        el('button', { class: 'btn-primary', type: 'button', onclick: complete }, '完成一组'),
         el('div', { class: 'train-secondary' }, [
           entry.sets.length > 0 || canCancelExtraSet(entry, base) ? btn(undoLabel, () => handlers.onUndo(base.id)) : null,
           showEnd ? btn('结束动作', () => handlers.onEnd(base.id), { disabled: !canEndExercise(entry, base) }) : null,
@@ -165,9 +286,10 @@ export function updateRestClock(root, session, template, now) {
   time.classList.toggle('rest-time-ready', st.ready);
 }
 
-export function renderTrain(root, { session, template, dateText, now, notice, onSelect, onCompleteSet, onUndo, onExtra, onEnd, onSkip, onUnskip, onPickAlternate, onBack, onFinish, onReset }) {
+export function renderTrain(root, { session, template, dateText, now, notice, prefill, last, inputs, historyLoaded, onSelect, onCompleteSet, onUndo, onExtra, onEnd, onSkip, onUnskip, onPickAlternate, onInput, onBack, onFinish, onReset }) {
   const sum = summarize(session, template);
-  const handlers = { onSelect, onCompleteSet, onUndo, onExtra, onEnd, onSkip, onUnskip, onPickAlternate };
+  const handlers = { onSelect, onCompleteSet, onUndo, onExtra, onEnd, onSkip, onUnskip, onPickAlternate, onInput };
+  const ctx = { prefill, last, inputs, historyLoaded, sessionId: session.id };
   replaceChildren(root, [
     el('header', { class: 'train-header' }, [
       el('div', { class: 'train-topline' }, [
@@ -186,7 +308,7 @@ export function renderTrain(root, { session, template, dateText, now, notice, on
     el(
       'ul',
       { class: 'train-list', role: 'list' },
-      orderedEntries(session).map((entry) => renderRow(entry, template, handlers))
+      orderedEntries(session).map((entry) => renderRow(entry, template, handlers, ctx))
     ),
     el('div', { class: 'train-footer' }, [
       el('button', { class: 'btn-secondary btn-finish', type: 'button', onclick: onFinish }, '结束训练'),

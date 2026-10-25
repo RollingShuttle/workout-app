@@ -565,3 +565,111 @@ body {
   min-height: 48px;
   margin-top: 12px;
 }
+
+/* 每组重量 / 次数输入 */
+.set-entry {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.last-ref {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.set-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.set-inputs-single {
+  grid-template-columns: 1fr;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field-label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.stepper {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--btn-secondary-border);
+  border-radius: var(--radius-btn-sm);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.step {
+  flex: none;
+  width: 44px;
+  min-height: 48px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 22px;
+}
+
+.step:active {
+  opacity: 0.6;
+}
+
+input.num {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+input.num::-webkit-outer-spin-button,
+input.num::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input.num:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.set-error {
+  margin: 0;
+  min-height: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+/* 空时不占位，但仍在无障碍树里：display:none 的 aria-live 区域填字后 VoiceOver 不会读 */
+.set-error:empty {
+  position: absolute;
+}
+
+.train-row-sets {
+  margin: -6px 0 10px;
+  color: var(--muted);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}

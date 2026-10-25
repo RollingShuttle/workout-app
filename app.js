@@ -28,16 +28,31 @@ import {
   findEntry,
   sessionHasInput,
 } from './workout.js';
-import { renderTrain, renderTrainUnavailable, renderAlternateSheet, updateRestClock } from './train-view.js';
-import { putSession, deleteSession, findDraft, requestPersistentStorage } from './db.js';
+import { renderTrain, renderTrainUnavailable, renderAlternateSheet, updateRestClock, updateLastRef } from './train-view.js';
+import { putSession, deleteSession, findDraft, listSessions, requestPersistentStorage } from './db.js';
+import { lastSetsFor, prefillFor } from './history.js';
 
-const APP_VERSION = '0.6.0';
+const APP_VERSION = '0.7.0';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
 // 全局状态：计划、当前"今天"、进行中的训练、最近一次保存错误（null = 正常）。
 // session 每次变化都写进 IndexedDB（有记录时 put，没记录时 delete），启动时从草稿恢复。
 // picker：正在换替代动作的 exerciseId（底部选单打开时），否则 null
-const state = { plan: null, date: null, isTest: false, session: null, saveError: null, trainTemplate: null, picker: null };
+// history：已完成的训练（按时间倒序），给"上次数据"用；historyLoaded 为 false 时进训练页会去读一次
+// inputs：进行中动作输入框里暂存的值 { exerciseId, setIndex, weight?, reps? }，重画页面时用它恢复
+const state = {
+  plan: null,
+  date: null,
+  isTest: false,
+  session: null,
+  saveError: null,
+  trainTemplate: null,
+  picker: null,
+  history: [],
+  historyLoaded: false, // 已发起读取
+  historyReady: false, // 已读到结果
+  inputs: null,
+};
 
 function setStatus(text) {
   const node = document.getElementById('status');
@@ -94,7 +109,9 @@ function newSession(template, dateKey) {
 // 写入 IndexedDB：有记录就保存，撤到一组都没有就删掉草稿。
 // 返回 Promise<boolean>，从不 reject；失败时把错误放进 state.saveError 显示在页面上，成功后清掉。
 function persistSession(session) {
-  const op = sessionHasInput(session) || session.finishedAt ? putSession(session) : deleteSession(session.id);
+  // 有输入、已结束、或输入框里有还没提交的值 → 保存；否则（撤到什么都没有）删掉草稿
+  const keep = sessionHasInput(session) || session.finishedAt || session.pendingInput;
+  const op = keep ? putSession(session) : deleteSession(session.id);
   return op.then(
     () => {
       if (state.saveError) {
@@ -252,6 +269,9 @@ async function finishTraining(session, template) {
   const now = Date.now();
   const leave = () => {
     state.session = null;
+    state.inputs = null;
+    state.historyLoaded = false; // 刚结束的这次要算进"上次"
+    state.historyReady = false;
     location.hash = '';
     render(); // 本来就在首页时 hash 没变，不会触发 hashchange，手动画一次
   };
@@ -314,14 +334,57 @@ function renderTrainView(root, day) {
     render();
   };
   state.trainTemplate = template;
+  const lastFor = (entry) => lastSetsFor(state.history, entry.exerciseId, entry.usedAlternate, state.session.id);
+  if (!state.historyLoaded) {
+    state.historyLoaded = true; // 先置位，避免重画时反复读
+    listSessions({ test: state.isTest }).then(
+      (rows) => {
+        state.history = rows;
+        state.historyReady = true;
+        if (currentView() !== 'train') return;
+        // 正在输入框里打字：别整页重画（会收起键盘、丢掉"37."这种没打完的值），只就地更新"上次"那一行
+        const focused = document.activeElement;
+        if (focused && focused.matches('#app input.num')) {
+          updateLastRef(document.getElementById('app'), state.session, state.trainTemplate, lastFor);
+          return;
+        }
+        render();
+      },
+      () => {
+        state.historyLoaded = false;
+      }
+    );
+  }
+  // 草稿里带着上次没提交的输入值（页面被 iOS 回收后重载）：恢复成暂存
+  if (!state.inputs && state.session.pendingInput) state.inputs = state.session.pendingInput;
   renderTrain(root, {
     session: state.session,
     template,
     dateText,
     now: Date.now(),
     notice: state.saveError,
+    prefill: (entry, ex) => prefillFor(entry, ex, lastFor(entry)),
+    last: lastFor,
+    inputs: state.inputs,
+    historyLoaded: state.historyReady,
+    onInput: (key, field, value) => {
+      const same =
+        state.inputs &&
+        state.inputs.sessionId === key.sessionId &&
+        state.inputs.exerciseId === key.exerciseId &&
+        (state.inputs.usedAlternate ?? null) === (key.usedAlternate ?? null) &&
+        state.inputs.setIndex === key.setIndex;
+      if (!same) state.inputs = { ...key };
+      state.inputs[field] = value;
+      // 暂存值随草稿写库：页面被 iOS 回收后重载，输入框不会退回预填值。不重画（会丢焦点）
+      state.session = { ...state.session, pendingInput: { ...state.inputs } };
+      persistSession(state.session);
+    },
     onSelect: (id) => update(selectExercise(state.session, template, id)),
-    onCompleteSet: (id) => update(completeSet(state.session, template, id, Date.now())),
+    onCompleteSet: (id, values) => {
+      state.inputs = null;
+      update({ ...completeSet(state.session, template, id, Date.now(), values), pendingInput: null });
+    },
     onUndo: (id) => update(undoLastSet(state.session, template, id)),
     onExtra: (id) => update(addExtraSet(state.session, template, id)),
     onBack: goHome,
@@ -342,8 +405,12 @@ function renderTrainView(root, day) {
         onPick: (name) => {
           state.picker = null;
           const next = setAlternate(state.session, template, entry.exerciseId, name);
-          if (next === state.session) render();
-          else update(next);
+          if (next === state.session) {
+            render(); // 选的还是当前这个，输入框里的值保留
+          } else {
+            state.inputs = null; // 换了动作：原动作输入框里暂存的值不带到新动作上，重画后按新动作预填
+            update({ ...next, pendingInput: null });
+          }
         },
         onClose: () => { state.picker = null; render(); },
       });

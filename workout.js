@@ -117,8 +117,8 @@ export function selectExercise(session, template, id) {
   return activate(session, id, {});
 }
 
-// 完成一组：记一条 set；达到目标组数 → 完成、清空进行中
-export function completeSet(session, template, id, now) {
+// 完成一组：记一条 set（重量、次数来自输入框；没传就用计划重量 / null）；达到目标组数 → 完成、清空进行中
+export function completeSet(session, template, id, now, input = {}) {
   const entry = findEntry(session, id);
   const exercise = findExercise(template, id);
   if (!entry || !exercise || entry.status === 'done' || entry.status === 'skipped') return session;
@@ -129,7 +129,9 @@ export function completeSet(session, template, id, now) {
     session.lastSetCompletedAt == null || now < session.lastSetCompletedAt
       ? null
       : Math.round((now - session.lastSetCompletedAt) / 1000);
-  const set = { setNo, weight: plannedWeight(entry, exercise), reps: null, completedAt: now, restTakenSeconds };
+  const weight = input.weight === undefined ? plannedWeight(entry, exercise) : input.weight;
+  const reps = input.reps === undefined ? null : input.reps;
+  const set = { setNo, weight, reps, completedAt: now, restTakenSeconds };
   if (entry.usedAlternate) set.usedAlternate = entry.usedAlternate; // 每组记下当时用的替代动作，中途切换也能分清
 
   const updated = { ...entry, sets: [...entry.sets, set] };
@@ -282,6 +284,7 @@ export function finishSession(session, template, now) {
     finishedAt: now,
     activeExerciseId: null,
     restStartedAt: null,
+    pendingInput: null, // 输入框里还没提交的值，结束后不留
     entries: session.entries.map((e) => {
       const exercise = template ? findExercise(template, e.exerciseId) : null;
       let done;
