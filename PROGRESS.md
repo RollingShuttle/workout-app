@@ -16,6 +16,7 @@
 - 2026-10-24：Phase 3 第一项完成——打球 / 有氧 / 散步记录（首页按钮 + 底部表单）、本周 7 天小条、本周球次数（≥3 变色，第 4 次提示但不阻止）。
 - 2026-10-24：计划存进 IndexedDB + 首次启动页（载入内置计划 / 从空白计划开始）。运行时只读库里的计划，training-plan.json 只是内置模板。
 - 2026-10-24：计划编辑页（#plan：每周安排 / 调课 / 训练日启用；#plan/day/<id>：动作列表，上移下移、新增 / 修改 / 删除）。改完立刻生效并写库，已保存的记录不受影响。**Phase 3 功能项完成**，剩设置页和真机复验。
+- 2026-10-24：设置页（#settings）：单位 lb/kg、自动开始秒表、默认参考休息秒数、提示音、屏幕常亮、导出 / 导入 JSON（覆盖 / 合并）、重新载入内置计划、清空数据（两次确认）。Phase 4 的导出导入已顺带做完，剩备份提醒。
 
 ## 部署
 
@@ -29,12 +30,15 @@
 
 - 结束训练的汇总页（每个动作的最佳组要等 Phase 2 的重量/次数输入）。
 - 首页 §3.1 还没做的部分（Phase 1 验收不要求，顺序由用户定）：本周 7 天小条、规则提示折叠、"今天打球 / 不打"按钮和本周球次数（Phase 3）。
-- 设置页（§3.6）：单位、自动休息、默认休息秒数、声音、屏幕常亮、导出/导入 JSON、清空数据、**重新载入内置计划（覆盖）**——现在计划进库后，改 training-plan.json 不会再影响手机上的计划，只能靠这个入口或计划编辑。
+- 备份提醒：每完成 10 次训练提醒一次导出（spec 2.5 / Phase 4）。
+- 真机复验设置页里靠系统能力的三项：导出走分享菜单能否存到"文件"、屏幕常亮（Wake Lock）、提示音（静音键）。
 - 首页规则提示折叠显示（§3.1 底部）。
 - 上肢B 启用后"力量之后接有氧"的记录（训练页结束时顺带记一条）。
 - 真机复验 Phase 2 三项（输入预填、历史折线、进阶提示）。
 
 ## 日志（每步追加一行：日期 · 做了什么 · 验收结果 · 下一步）
+
+- 2026-10-24 · 设置页：settings.js（DEFAULT_SETTINGS / normalizeSettings / loadSettings / saveSettings，settings 表 key=settings）、units.js（全局显示单位：lbToDisplay / displayToLb / formatWeight / weightStep；数据一律按 lb 存，kg 只换算显示和输入，保留一位小数）、device.js（Wake Lock 申请 / 释放，并发申请只持一份；WebAudio 两声 880Hz，在"完成一组"的点击里 unlockAudio）、backup.js（buildBackup { app, format, exportedAt, plan, settings, sessions } / backupFileName / parseBackup 宽容校验 / mergeSessions）、settings-view.js（训练：单位分段按钮、自动开始秒表、默认休息秒数 0–600、提示音、屏幕常亮（不支持则禁用）；数据：记录数 + 持久存储状态、导出、导入（选文件后显示预览卡：覆盖 / 合并 / 取消）、会丢数据的说明；计划：编辑计划入口、重新载入内置计划；危险操作：清空全部数据）、db.js（putSessions / clearSessions / clearSettings / isPersisted）、app.js（#settings 路由；applySettings 先改内存重画再写库，换单位清掉暂存输入；exportBackup 优先 navigator.share 文件，不行就 a[download]；applyImport 覆盖 = 清表 + 写入 + 计划 / 设置替换，合并 = 只写记录；clearAllData 两次确认后清两张表回首次启动页；syncWakeLock 只在训练页 + 开着 + 可见时持有；tickRest 从"没到"变"到了"那一下响一声，回前台不响）、workout.js（completeSet 带 autoStartRest=false 时 restStartedAt 留 null；hydrateSession 只给缺字段的旧草稿补；undo 时秒表没在走就保持不走；resetRest 也当"开始计时"）、train-view.js（输入框按显示单位、步进 lb ±5 / kg ±2.5、读值换回 lb；秒表空闲且做过组时按钮变"开始计时"；参考休息用设置里的默认值）、schedule.js / history.js / history-view.js / progression.js / plan-view.js 的重量显示和输入都走 units；style.css；sw.js v20 · 决定：kg 是全局换算（显示和输入都换，存 lb，一位小数）；导出只含当前模式的记录（测试模式只有 test:true 的），覆盖导入和清空动整张表；合并时同 id 以文件为准、计划和设置不动 · 验收通过（只用浏览器实测；浏览器面板当时是隐藏状态，Wake Lock 和定时链用打桩的 visibilityState / wakeLock.request 跑的）：切 kg 后首页 47.6 kg、训练页"重量 kg"步进 2.5、预填 20.4、输入 50 kg 存 110.2 lb、折线轴和表格 kg，切回 lb 正常；关自动休息后完成一组 --:-- + "开始计时"可点，重载仍空闲，点后 00:00 走表；默认休息 120 生效于新动作表单、700 被拒；提示音：参考 3 秒时第 4 秒两声（createOscillator 2 次）只响一次，重置后再响；常亮：训练页持有、回首页释放；导出：分享拿到 workout-backup-2026-10-24.json（15 条、plan、settings），分享不可用时走下载；导入：预览"1 条记录 · 含计划 · 含设置"，合并 → 16 条且计划 / 单位不变，覆盖 → 1 条、计划名和单位换成文件里的，坏文件报"不是合法的 JSON 文件"，再覆盖回原备份 → 15 条；重新载入内置 → 推日顺序和 105 lb 回来；清空 → 两张表 0 条、首次启动页，载入内置 + 合并导入恢复 15 条，设置回默认；无新报错 · 备份提醒 / 真机复验
 
 - 2026-10-24 · 计划编辑页：plan-edit.js（纯函数：安排的统一表示 assign {type day/cardio/ballOptional/rest, id, fallbackId, ballOptional, note} ↔ weeklySchedule / overrides 条目；setWeekday / upsertOverride / removeOverride / setTemplateEnabled / updateExercise / moveExercise / addExercise / removeExercise / newExerciseId（ex-时间戳36进制）/ exerciseFromForm / parseAlternates（"名称:重量，名称"）），plan-view.js（#plan 总览：每周安排 7 行、调课列表 + 新增、训练日列表 + 启用开关；安排表单：类型下拉 → 训练日 / 有氧模板 / 不打球时做什么 / 休息日可打球 / 备注，调课多一个日期框和"删除这条调课"；#plan/day/<id>：动作行（名称、组×次、重量 · 休息 · 替代 · 备注）+ 上移 / 下移 / 删除，动作表单：名称、肌群、重量（空 = 首次做时填）、显示文字、自重 / 助力 / 每边配重 / 每侧各做、组数区间、次数区间、休息秒数、替代动作、备注，校验：名称必填、组数次数 ≥1 整数且下限 ≤ 上限、重量 ≥0），app.js（路由 #plan / #plan/day/<id>；applyPlan：先改内存并重画再 savePlan，失败在页面上提示；首页"历史记录"旁加"计划"；删除动作要确认），workout.js（syncEntries：进训练页时草稿按模板同步——新动作补 entry、没记录的被删动作去掉、有记录的保留；entry 工厂共用；targetSets 容错 extraSets 缺失），style.css，sw.js v19 · 决定：排序用"上移 / 下移"按钮代替 spec 3.5 的拖动（移动端拖动要手势处理，先用按钮）；新动作 id 用时间戳，名字随便改，记录只认 id · 验收通过（只用浏览器实测）：周二改成固定"二区 45 分钟"后总览与库里的 weeklySchedule 都变、11/3 首页标题"二区 45 分钟"；新增 11/4 调课为推日 + 备注 → 11/4 首页"推日"+ 调课标签 + 备注，打开那条可改、删除后消失；勾上上肢B → 周四行与 11/5 首页都变"上肢B + 二区"，6 个动作；推日：下移换序、修改斜上卧推（空名字 / 最少 > 目标各报错；改 110 lb / 120 秒 / 替代"哑铃卧推:45，史密斯推"后行和库都对）、新增自重每侧动作（库里 id ex-…、perSide、notes）、删除后回 5 个；进行中的推日草稿进训练页多出"同步测试 0/3"行、删掉后消失；历史列表与详情不受影响；无报错 · 设置页（§3.6）
 
@@ -81,6 +85,7 @@
 - 跨天续练的草稿（昨天做了几组、今天接着做完再结束）用时 = finishedAt − startedAt 仍会跨天；只有"最后一组之后超过 1 小时才点结束"的情况会按最后一组算。做历史页的时长时再决定要不要按活动时段累加。
 - 秒表条让 sticky 页头有 153px 高（375×812 上约 19%），小屏（SE）上动作列表可视区域更少。真机看过再决定要不要滚动时收起标题行。
 - "结束训练"的用时 = finishedAt − startedAt，startedAt 是点"开始训练"的时刻；在训练页停很久才做第一组会把这段也算进去。
+- 设置页：真实的 Wake Lock 和提示音没在可见页面上跑过（面板隐藏时 Chrome 拒绝申请、定时链不走），只验了逻辑；iOS 上要真机看。导出用 navigator.share，在 await 读库之后才调，iOS 的用户手势窗口理论上够（几百毫秒）但没真机验过；不行会退到下载。kg 换算：输入 kg 存成 lb 保留一位小数，切回 lb 会看到 110.2 这类数。清空数据 / 覆盖导入动的是整张表（含 ?date= 测试记录），导出只含当前模式的记录。
 - 计划编辑：排序用"上移 / 下移"按钮，没做 spec 3.5 的拖动排序。动作改名后历史里按 id 显示新名字；删掉的动作在历史里显示 id、折线入口禁用。训练中途改计划：草稿在进训练页时按模板同步，顺序仍按草稿原顺序。调课列表包含已过去的日期（内置过渡周），没有自动清理。浅色模式的表单没截图核对（改视口后截图不稳定），用的是和打球表单一样的 token。
 
 ## 以后再说

@@ -3,6 +3,7 @@ import { el, replaceChildren } from './dom.js';
 import { WEEKDAY_LABELS, parseDateKey, formatLoad } from './schedule.js';
 import { formatSets } from './history.js';
 import { findExercise, effectiveExercise, activeDurationMs } from './workout.js';
+import { formatWeight, lbToDisplay, displayUnit } from './units.js';
 import { describeActivity } from './activity.js';
 
 function fmtDate(key) {
@@ -218,7 +219,7 @@ export function renderExerciseChart(root, { exerciseId, plan, sessions, loading,
     [...points].reverse().map((p) =>
       el('li', { class: 'hist-point' }, [
         el('span', { class: 'hist-date', text: fmtDate(p.date) }),
-        el('span', { class: 'hist-meta', text: `${bodyweight ? '' : `${bestLabel} ${p.bestWeight == null ? '—' : p.bestWeight} lb · `}共 ${p.totalReps == null ? '—' : p.totalReps} 次 · ${p.sets} 组` }),
+        el('span', { class: 'hist-meta', text: `${bodyweight ? '' : `${bestLabel} ${formatWeight(p.bestWeight)} · `}共 ${p.totalReps == null ? '—' : p.totalReps} 次 · ${p.sets} 组` }),
       ])
     )
   );
@@ -232,7 +233,7 @@ export function renderExerciseChart(root, { exerciseId, plan, sessions, loading,
           !bodyweight
             ? el('section', { class: 'card chart-card' }, [
                 el('h2', { class: 'chart-title', text: weightTitle }),
-                renderLineChart(points.map((p) => p.bestWeight), labels, { unit: ' lb' }),
+                renderLineChart(points.map((p) => lbToDisplay(p.bestWeight)), labels, { unit: ` ${displayUnit()}` }),
               ])
             : null,
           el('section', { class: 'card chart-card' }, [

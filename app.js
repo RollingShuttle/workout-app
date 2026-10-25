@@ -30,8 +30,8 @@ import {
   activeDurationMs,
   syncEntries,
 } from './workout.js';
-import { renderTrain, renderTrainUnavailable, renderAlternateSheet, updateRestClock, updateLastRef } from './train-view.js';
-import { putSession, deleteSession, findDraft, listSessions, requestPersistentStorage } from './db.js';
+import { renderTrain, renderTrainUnavailable, renderAlternateSheet, updateRestClock, updateLastRef, restClockState } from './train-view.js';
+import { putSession, deleteSession, findDraft, listSessions, requestPersistentStorage, putSessions, clearSessions, clearSettings, isPersisted } from './db.js';
 import { lastSetsFor, prefillFor } from './history.js';
 import { renderHistoryList, renderSessionDetail, renderExerciseChart } from './history-view.js';
 import { suggestionFor } from './progression.js';
@@ -49,11 +49,15 @@ import {
   removeExercise,
   newExerciseId,
   exerciseFromForm,
-  parseAlternates,
 } from './plan-edit.js';
 import { renderPlanOverview, renderPlanDay, renderAssignmentSheet, renderExerciseSheet } from './plan-view.js';
+import { loadSettings, saveSettings, normalizeSettings } from './settings.js';
+import { setDisplayUnit } from './units.js';
+import { setWakeLock, wakeLockSupported, unlockAudio, beep, audioSupported } from './device.js';
+import { buildBackup, backupFileName, parseBackup } from './backup.js';
+import { renderSettings } from './settings-view.js';
 
-const APP_VERSION = '0.12.0';
+const APP_VERSION = '0.13.0';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
 // 全局状态：计划、当前"今天"、进行中的训练、最近一次保存错误（null = 正常）。
@@ -79,6 +83,9 @@ const state = {
   builtinPlan: null, // training-plan.json 的内容，只作内置模板
   firstRun: false, // 库里还没有计划：显示首次启动页
   planSheet: null, // 计划编辑页打开的表单：{ kind: 'weekday' | 'override' | 'exercise', ... }
+  settings: normalizeSettings({}), // spec 2.4；启动时从库里读
+  importPreview: null, // 设置页选了备份文件后的预览 { name, data, summary } 或 { name, error }
+  persisted: null, // navigator.storage.persisted() 的结果，设置页显示
 };
 
 function setStatus(text) {
@@ -117,6 +124,7 @@ function currentView() {
   if (h.startsWith('#exercise/')) return 'exercise';
   if (h === '#plan') return 'plan';
   if (h.startsWith('#plan/day/')) return 'planDay';
+  if (h === '#settings') return 'settings';
   return 'home';
 }
 
@@ -393,6 +401,7 @@ function renderHome(root, day) {
     el('div', { class: 'home-links' }, [
       el('a', { class: 'btn-secondary link-btn', href: '#history' }, '历史记录'),
       el('a', { class: 'btn-secondary link-btn', href: '#plan' }, '计划'),
+      el('a', { class: 'btn-secondary link-btn', href: '#settings' }, '设置'),
     ]),
   ]);
   if (state.activitySheet) {
@@ -520,6 +529,7 @@ function renderTrainView(root, day) {
       }),
     inputs: state.inputs,
     historyLoaded: state.historyReady,
+    defaultRestSeconds: state.settings.defaultRestSeconds,
     onInput: (key, field, value) => {
       const same =
         state.inputs &&
@@ -535,8 +545,9 @@ function renderTrainView(root, day) {
     },
     onSelect: (id) => update(selectExercise(state.session, template, id)),
     onCompleteSet: (id, values) => {
+      if (state.settings.sound) unlockAudio(); // 必须在点击手势里解锁音频（spec 3.3）
       state.inputs = null;
-      update({ ...completeSet(state.session, template, id, Date.now(), values), pendingInput: null });
+      update({ ...completeSet(state.session, template, id, Date.now(), { ...values, autoStartRest: state.settings.autoStartRest }), pendingInput: null });
     },
     onUndo: (id) => update(undoLastSet(state.session, template, id)),
     onExtra: (id) => update(addExtraSet(state.session, template, id)),
@@ -580,9 +591,17 @@ function renderTrainView(root, day) {
  * 页面不可见时停掉，回到前台立刻重算一次。 */
 let restTimer = null;
 
+let lastClock = null; // 上一次 tick 的 { start, ready }：从"没到"变"到了"的那一下响一声
+
 function tickRest() {
   if (currentView() !== 'train' || !state.session || !state.trainTemplate) return;
-  updateRestClock(document.getElementById('app'), state.session, state.trainTemplate, Date.now());
+  const now = Date.now();
+  const rest = state.settings.defaultRestSeconds;
+  updateRestClock(document.getElementById('app'), state.session, state.trainTemplate, now, rest);
+  const st = restClockState(state.session, state.trainTemplate, now, rest);
+  const start = state.session.restStartedAt;
+  if (state.settings.sound && lastClock && lastClock.start === start && !lastClock.ready && st.ready) beep();
+  lastClock = { start, ready: st.ready };
 }
 
 function scheduleRestTick() {
@@ -599,6 +618,7 @@ function scheduleRestTick() {
 
 function startRestTicker() {
   if (!state.trainTemplate) return; // 提示页没有秒表条，不起定时链
+  lastClock = null; // 回到前台 / 重画时不响：只有看着它走到参考时长才响
   tickRest();
   if (restTimer || document.visibilityState !== 'visible') return;
   scheduleRestTick();
@@ -614,6 +634,7 @@ function watchRestVisibility() {
   const onChange = () => {
     if (document.visibilityState === 'visible' && currentView() === 'train') startRestTicker();
     else stopRestTicker();
+    syncWakeLock(); // 锁屏时系统会自动放掉常亮，回来再申请
   };
   document.addEventListener('visibilitychange', onChange);
   window.addEventListener('pageshow', onChange);
@@ -764,14 +785,212 @@ function renderPlanView(root, view) {
     renderExerciseSheet(root, {
       title: existing ? `修改 · ${existing.name}` : '新增动作',
       exercise: existing,
+      defaultRestSeconds: state.settings.defaultRestSeconds,
       onSave: (form) => {
-        const ex = exerciseFromForm({ ...form, alternates: parseAlternates(form.alternatesText) }, existing || {});
+        const ex = exerciseFromForm(form, existing || {});
         if (existing) applyPlan(updateExercise(plan, templateId, existing.id, ex));
         else applyPlan(addExercise(plan, templateId, { id: newExerciseId(Date.now()), ...ex }));
       },
       onClose: closePlanSheet,
     });
   }
+}
+
+/* ---------- 设置（spec 3.6） ---------- */
+
+function applySettings(patch) {
+  const next = normalizeSettings({ ...state.settings, ...patch });
+  const unitChanged = next.unit !== state.settings.unit;
+  state.settings = next;
+  setDisplayUnit(next.unit);
+  if (unitChanged) {
+    // 输入框里暂存的是显示单位的值，换单位后作废（重画后按新单位预填）
+    state.inputs = null;
+    if (state.session && state.session.pendingInput) {
+      state.session = { ...state.session, pendingInput: null };
+      persistSession(state.session);
+    }
+  }
+  render();
+  saveSettings(next).then(
+    () => {
+      if (state.saveError) {
+        state.saveError = null;
+        render();
+      }
+    },
+    (err) => {
+      state.saveError = `设置没能保存：${err.message}`;
+      render();
+    }
+  );
+}
+
+// 导出：优先走系统分享（iOS 可存到"文件"），不行就下载
+async function exportBackup() {
+  const now = Date.now();
+  let sessions;
+  try {
+    sessions = await listSessions({ test: state.isTest });
+  } catch (err) {
+    state.saveError = `读取记录失败：${err.message}`;
+    render();
+    return;
+  }
+  const json = JSON.stringify(buildBackup({ plan: state.plan, settings: state.settings, sessions, now }), null, 2);
+  const name = backupFileName(now);
+  const file = new File([json], name, { type: 'application/json' });
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: name });
+      return;
+    } catch (err) {
+      if (err && err.name === 'AbortError') return; // 用户取消
+      // 其他失败走下载
+    }
+  }
+  const url = URL.createObjectURL(file);
+  const a = el('a', { href: url, download: name });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+function previewImport(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const parsed = parseBackup(String(reader.result));
+    state.importPreview = parsed.ok ? { name: file.name, data: parsed.data, summary: parsed.summary } : { name: file.name, error: parsed.error };
+    render();
+  };
+  reader.onerror = () => {
+    state.importPreview = { name: file.name, error: '读文件失败' };
+    render();
+  };
+  reader.readAsText(file);
+}
+
+// mode: 'replace' 覆盖（计划、设置、全部记录）| 'merge' 只加记录（同 id 以文件为准）
+async function applyImport(mode) {
+  const p = state.importPreview;
+  if (!p || p.error) return;
+  const { plan, settings, sessions } = p.data;
+  const msg =
+    mode === 'replace'
+      ? `覆盖导入？现在的计划、设置和全部记录会被文件里的替换（${sessions.length} 条记录）。`
+      : `合并导入？加入 ${sessions.length} 条记录，同一条以文件为准；计划和设置不变。`;
+  if (!window.confirm(msg)) return;
+  try {
+    if (mode === 'replace') {
+      await clearSessions();
+      await putSessions(sessions);
+      if (plan) {
+        await savePlan(plan);
+        state.plan = plan;
+      }
+      if (settings) {
+        await saveSettings(settings);
+        state.settings = settings;
+        setDisplayUnit(settings.unit);
+      }
+    } else {
+      await putSessions(sessions);
+    }
+    state.saveError = null;
+  } catch (err) {
+    state.saveError = `导入失败：${err.message}`;
+  }
+  state.importPreview = null;
+  // 记录变了：草稿重找、历史重读
+  state.session = null;
+  state.inputs = null;
+  state.historyLoaded = false;
+  state.historyReady = false;
+  state.historyError = null;
+  try {
+    const draft = await findDraft({ test: state.isTest });
+    state.session = draft ? hydrateSession(draft) : null;
+  } catch (_) {
+    /* 读不到草稿就当没有 */
+  }
+  render();
+}
+
+async function reloadBuiltinPlan() {
+  if (!window.confirm('用内置计划覆盖现在的计划？在计划编辑里改过的内容会丢，已保存的记录不受影响。')) return;
+  try {
+    await savePlan(state.builtinPlan);
+    state.plan = state.builtinPlan;
+    state.saveError = null;
+  } catch (err) {
+    state.saveError = `计划没能保存：${err.message}`;
+  }
+  render();
+}
+
+// 清空数据（二次确认）：记录、计划、设置全删，回到首次启动页
+async function clearAllData() {
+  if (!window.confirm('清空全部数据？训练计划、设置和所有记录都会删除，不可恢复。建议先导出备份。')) return;
+  if (!window.confirm('最后确认：真的要清空吗？')) return;
+  try {
+    await clearSessions();
+    await clearSettings();
+  } catch (err) {
+    state.saveError = `清空失败：${err.message}`;
+    render();
+    return;
+  }
+  state.session = null;
+  state.inputs = null;
+  state.history = [];
+  state.historyLoaded = false;
+  state.historyReady = false;
+  state.historyError = null;
+  state.importPreview = null;
+  state.saveError = null;
+  state.settings = normalizeSettings({});
+  setDisplayUnit(state.settings.unit);
+  state.plan = state.builtinPlan;
+  state.firstRun = true;
+  location.hash = '';
+  render();
+}
+
+function renderSettingsView(root) {
+  ensureHistory();
+  renderSettings(root, {
+    settings: state.settings,
+    version: APP_VERSION,
+    isTest: state.isTest,
+    info: {
+      sessionCount: state.historyReady && !state.historyError ? state.history.length : null,
+      persisted: state.persisted,
+      wakeLockSupported: wakeLockSupported(),
+      audioSupported: audioSupported(),
+    },
+    importPreview: state.importPreview,
+    saveError: state.saveError,
+    onChange: applySettings,
+    onExport: exportBackup,
+    onImportFile: previewImport,
+    onImportApply: applyImport,
+    onImportCancel: () => {
+      state.importPreview = null;
+      render();
+    },
+    onReloadBuiltin: reloadBuiltinPlan,
+    onClearAll: clearAllData,
+    onBack: () => {
+      location.hash = '';
+    },
+  });
+}
+
+// 屏幕常亮：只在训练页、设置开着、页面可见时持有；离开训练页或切后台就放掉
+function syncWakeLock() {
+  const want = state.settings.keepScreenAwake && currentView() === 'train' && Boolean(state.trainTemplate) && document.visibilityState === 'visible';
+  setWakeLock(want);
 }
 
 // 首次启动：选"载入内置计划"或"从空白计划开始"，选了就写库
@@ -802,6 +1021,11 @@ function renderFirstRun(root) {
 }
 
 function render() {
+  renderView();
+  syncWakeLock();
+}
+
+function renderView() {
   const root = document.getElementById('app');
   if (state.firstRun) {
     stopRestTicker();
@@ -819,8 +1043,10 @@ function render() {
   state.picker = null; // 选单开着时离开训练页，别让它下次再弹出来
   if (view !== 'home') state.activitySheet = null;
   if (view !== 'plan' && view !== 'planDay') state.planSheet = null;
+  if (view !== 'settings') state.importPreview = null;
   if (view === 'home') renderHome(root, day);
   else if (view === 'plan' || view === 'planDay') renderPlanView(root, view);
+  else if (view === 'settings') renderSettingsView(root);
   else renderHistoryView(root, view);
 }
 
@@ -884,6 +1110,11 @@ async function main() {
     root.replaceChildren(el('p', { class: 'problem', text: `读取内置训练计划失败：${err.message}` }));
     return;
   }
+  // 设置和计划一起读；设置读失败或超时就用默认值
+  const settingsLoad = loadSettings().then(
+    (settings) => ({ settings }),
+    (err) => ({ error: err })
+  );
   // 运行时的计划在 IndexedDB 里；没有就进首次启动页让用户选。读库最多等 3 秒，挂住就先用内置计划。
   const storedLoad = loadStoredPlan().then(
     (plan) => ({ plan }),
@@ -902,6 +1133,12 @@ async function main() {
     state.plan = state.builtinPlan;
     state.firstRun = true;
   }
+  const settingsFirst = await Promise.race([
+    settingsLoad,
+    new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), DRAFT_LOAD_TIMEOUT_MS)),
+  ]);
+  if (settingsFirst.settings) state.settings = settingsFirst.settings;
+  setDisplayUnit(state.settings.unit);
   // 读草稿最多等 3 秒：IndexedDB 偶尔会挂住（WebKit 有过 open 不回调的问题），不能让首页跟着卡死。
   // 超时后先画首页，草稿晚到时只要用户还没开始新的训练就补上。
   const draftLoad = findDraft({ test: isTest }).then(
@@ -925,7 +1162,12 @@ async function main() {
       }
     });
   }
-  requestPersistentStorage(); // 申请持久存储，结果不影响使用
+  requestPersistentStorage() // 申请持久存储，结果不影响使用；设置页显示是否批准
+    .then(() => isPersisted())
+    .then((v) => {
+      state.persisted = v;
+      if (currentView() === 'settings') render();
+    });
   render();
   watchRestVisibility();
   if (!isTest) watchDayChange();

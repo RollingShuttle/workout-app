@@ -1,5 +1,7 @@
 // schedule.js — 从训练计划解析"某一天练什么"。纯函数，不碰 DOM，不读时钟。
 
+import { formatWeight } from './units.js';
+
 export const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
 function pad2(n) {
@@ -147,7 +149,7 @@ export function formatLoad(load) {
   if (load.label) return load.label;
   if (load.bodyweight) return '自重';
   if (load.value == null) return '首次做时填';
-  return `${load.value} ${load.unit || 'lb'}`;
+  return formatWeight(load.value);
 }
 
 export function formatRange(range) {

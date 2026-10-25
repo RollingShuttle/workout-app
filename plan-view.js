@@ -1,7 +1,17 @@
 // plan-view.js — 计划编辑页（spec 3.5）：总览（每周安排 / 调课 / 训练日）、训练日动作列表、编辑表单。只画 DOM。
 import { el, replaceChildren } from './dom.js';
 import { formatLoad, formatSetsReps, parseDateKey, WEEKDAY_LABELS } from './schedule.js';
-import { entryToAssignment, alternatesToText } from './plan-edit.js';
+import { entryToAssignment, alternatesToText, parseAlternates } from './plan-edit.js';
+import { lbToDisplay, displayToLb, displayUnit, weightStep } from './units.js';
+
+// 替代动作文字里的重量按显示单位（存的是 lb）
+function altsDisplayText(list) {
+  return alternatesToText((list || []).map((a) => (a.load && a.load.value != null ? { ...a, load: { ...a.load, value: lbToDisplay(a.load.value) } } : a)));
+}
+
+function altsFromDisplayText(text) {
+  return parseAlternates(text).map((a) => (a.load && a.load.value != null ? { ...a, load: { ...a.load, value: displayToLb(a.load.value) } } : a));
+}
 
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
@@ -208,7 +218,7 @@ export function renderPlanDay(root, { template, saveError, onEditExercise, onMov
       el('button', { class: 'hist-row-btn', type: 'button', onclick: () => onEditExercise(ex.id) }, [
         el('span', { class: 'hist-date', text: ex.name }),
         el('span', { class: 'hist-type', text: formatSetsReps(ex) }),
-        el('span', { class: 'hist-meta', text: `${formatLoad(ex.load)} · 休息 ${ex.restSeconds ?? '—'} 秒${(ex.alternates || []).length ? ` · 替代 ${alternatesToText(ex.alternates)}` : ''}${ex.notes ? ` · ${ex.notes}` : ''}` }),
+        el('span', { class: 'hist-meta', text: `${formatLoad(ex.load)} · 休息 ${ex.restSeconds ?? '—'} 秒${(ex.alternates || []).length ? ` · 替代 ${altsDisplayText(ex.alternates)}` : ''}${ex.notes ? ` · ${ex.notes}` : ''}` }),
       ]),
       el('div', { class: 'plan-ex-actions' }, [
         el('button', { class: 'btn-secondary', type: 'button', disabled: i === 0, 'aria-label': `${ex.name} 上移`, onclick: () => onMove(ex.id, -1) }, '上移'),
@@ -233,18 +243,18 @@ function toNum(v) {
   return Number.isFinite(n) ? n : NaN;
 }
 
-export function renderExerciseSheet(root, { title, exercise, onSave, onClose }) {
+export function renderExerciseSheet(root, { title, exercise, defaultRestSeconds = 90, onSave, onClose }) {
   const ex = exercise || {};
   const load = ex.load || {};
   const body = [
     textField('ex-name', '名称', ex.name, { maxlength: '30' }),
     textField('ex-muscle', '肌群（可选）', ex.muscle, { maxlength: '20' }),
-    el('div', { class: 'set-inputs' }, [numField('ex-weight', '重量 lb（空 = 首次做时填）', load.bodyweight ? null : load.value, { step: '0.5', min: '0' }), textField('ex-label', '重量显示文字（可选）', load.label, { maxlength: '20', placeholder: '如 120 每边' })]),
+    el('div', { class: 'set-inputs' }, [numField('ex-weight', `重量 ${displayUnit()}（空 = 首次做时填）`, load.bodyweight ? null : lbToDisplay(load.value), { step: String(weightStep().step), min: '0' }), textField('ex-label', '重量显示文字（可选）', load.label, { maxlength: '20', placeholder: '如 120 每边' })]),
     el('div', { class: 'plan-checks' }, [checkField('ex-bodyweight', '自重', load.bodyweight), checkField('ex-assisted', '助力（数值越小越难）', load.assisted), checkField('ex-perSideLoad', '每边配重', load.perSideLoad), checkField('ex-perSide', '每侧各做', ex.perSide)]),
     el('div', { class: 'set-inputs' }, [numField('ex-sets-min', '组数 最少', (ex.sets || {}).min ?? 3, { step: '1', min: '1' }), numField('ex-sets-max', '组数 目标', (ex.sets || {}).max ?? 3, { step: '1', min: '1' })]),
     el('div', { class: 'set-inputs' }, [numField('ex-reps-min', '次数 下限', (ex.reps || {}).min ?? 6, { step: '1', min: '1' }), numField('ex-reps-max', '次数 上限', (ex.reps || {}).max ?? 10, { step: '1', min: '1' })]),
-    numField('ex-rest', '参考休息秒数', ex.restSeconds ?? 90, { step: '5', min: '0' }),
-    textField('ex-alts', '替代动作（逗号分隔，可写 名称:重量）', alternatesToText(ex.alternates), { placeholder: '斜下胸推机器:45，哑铃推' }),
+    numField('ex-rest', '参考休息秒数', ex.restSeconds ?? defaultRestSeconds, { step: '5', min: '0' }),
+    textField('ex-alts', '替代动作（逗号分隔，可写 名称:重量）', altsDisplayText(ex.alternates), { placeholder: '斜下胸推机器:45，哑铃推' }),
     textField('ex-notes', '备注（可选）', ex.notes, { maxlength: '80' }),
   ];
   const shell = sheetShell(root, title, body, { onClose });
@@ -264,12 +274,13 @@ export function renderExerciseSheet(root, { title, exercise, onSave, onClose }) 
       name,
       muscle: q('ex-muscle').value.trim(),
       ...nums,
+      weight: displayToLb(nums.weight),
       label: q('ex-label').value.trim(),
       bodyweight: q('ex-bodyweight').checked,
       assisted: q('ex-assisted').checked,
       perSideLoad: q('ex-perSideLoad').checked,
       perSide: q('ex-perSide').checked,
-      alternatesText: q('ex-alts').value,
+      alternates: altsFromDisplayText(q('ex-alts').value),
       notes: q('ex-notes').value.trim(),
     });
     return undefined;

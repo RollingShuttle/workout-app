@@ -2,6 +2,7 @@
 //   进阶：最近两次已完成训练里，这个动作所有组都做到 reps.max → 可以加重（上肢 +5，腿日 +10，引体助力 −5）
 //   退阶：最近两次都有组低于 reps.min → 下次减一组
 // 只看原动作 / 同一替代动作口径的组，且两次都把每组次数记全了（旧记录没记次数的不算）。
+import { formatWeight } from './units.js';
 
 // 最近 n 次做过这个动作、次数记全的已完成训练，最新在前：[{ date, sets: [{ weight, reps }] }]
 export function recentSessionsFor(sessions, exerciseId, usedAlternate, excludeId, n = 2) {
@@ -37,8 +38,8 @@ export function suggestionFor({ exercise, entry, templateId, sessions, excludeId
   if (allAtMax && !load.bodyweight) {
     const delta = incrementFor(exercise, templateId, increments);
     const text = load.assisted
-      ? `上两次都做满 ${reps.max} 次，可以把助力减 ${Math.abs(delta)} lb`
-      : `上两次都做满 ${reps.max} 次，可以加重 +${delta} lb`;
+      ? `上两次都做满 ${reps.max} 次，可以把助力减 ${formatWeight(Math.abs(delta))}`
+      : `上两次都做满 ${reps.max} 次，可以加重 +${formatWeight(delta)}`;
     return { kind: 'up', delta, text };
   }
   if (allAtMax && load.bodyweight) {

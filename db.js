@@ -102,6 +102,30 @@ export function deleteSession(id) {
   return withStore('sessions', 'readwrite', (store) => requestToPromise(store.delete(id)));
 }
 
+// 导入用：一个事务里写入多条
+export function putSessions(sessions) {
+  return withStore('sessions', 'readwrite', (store) => Promise.all(sessions.map((s) => requestToPromise(store.put(s)))));
+}
+
+// 清空（覆盖导入 / 清空数据用）：整张表，不分测试模式
+export function clearSessions() {
+  return withStore('sessions', 'readwrite', (store) => requestToPromise(store.clear()));
+}
+
+export function clearSettings() {
+  return withStore('settings', 'readwrite', (store) => requestToPromise(store.clear()));
+}
+
+// 当前是否已获持久存储：true / false / null（不支持）
+export async function isPersisted() {
+  try {
+    if (navigator.storage && navigator.storage.persisted) return await navigator.storage.persisted();
+  } catch (_) {
+    /* 不支持 */
+  }
+  return null;
+}
+
 // 全表读取只在本文件内用；外部一律走 listSessions / findDraft，
 // 保证 ?date= 测试模式的记录（test:true）和真实训练永远分开。
 function getAllSessions() {
@@ -122,7 +146,7 @@ export async function findDraft({ test = false } = {}) {
   return rows.find((s) => !s.finishedAt) || null;
 }
 
-// settings 表：key → value。现在只放 'plan'（整份训练计划）。
+// settings 表：key → value。'plan'（整份训练计划）、'settings'（设置）。
 export function getSetting(key) {
   return withStore('settings', 'readonly', (store) => requestToPromise(store.get(key))).then((row) =>
     row ? row.value : undefined

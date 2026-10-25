@@ -1,5 +1,6 @@
 // train-view.js — 训练模式页面。只画 DOM；状态改动通过回调交给 app.js。
 import { el, replaceChildren } from './dom.js';
+import { lbToDisplay, displayToLb, displayUnit, weightStep } from './units.js';
 import { formatLoad, formatRange } from './schedule.js';
 import { formatSets } from './history.js';
 import {
@@ -68,9 +69,10 @@ function renderSetInputs(entry, base, ex, ctx, handlers) {
     t && t.sessionId === ctx.sessionId && t.exerciseId === base.id && (t.usedAlternate ?? null) === alt && t.setIndex === setIndex
       ? t
       : {};
-  const weightVal = 'weight' in typed ? typed.weight : pre.weight;
+  const weightVal = 'weight' in typed ? typed.weight : lbToDisplay(pre.weight); // 输入框里的值按显示单位
   const repsVal = 'reps' in typed ? typed.reps : pre.reps;
-  const weightLabel = load.assisted ? '助力 lb' : load.perSideLoad ? '每边 lb' : '重量 lb';
+  const u = displayUnit();
+  const weightLabel = load.assisted ? `助力 ${u}` : load.perSideLoad ? `每边 ${u}` : `重量 ${u}`;
   const errEl = el('p', { class: 'set-error', 'aria-live': 'polite' });
   const onChange = (field) => (value) => {
     errEl.textContent = ''; // 改值就清提示；下次报错是从空变有，VoiceOver 才会读
@@ -79,7 +81,7 @@ function renderSetInputs(entry, base, ex, ctx, handlers) {
   const last = ctx.last(entry);
   const fields = [];
   if (!bodyweight) {
-    fields.push(numberField({ id: `inp-${base.id}-weight`, label: weightLabel, value: weightVal, delta: 5, step: 0.5, min: 0, inputmode: 'decimal', onChange: onChange('weight') }));
+    fields.push(numberField({ id: `inp-${base.id}-weight`, label: weightLabel, value: weightVal, delta: weightStep().delta, step: weightStep().step, min: 0, inputmode: 'decimal', onChange: onChange('weight') }));
   }
   fields.push(numberField({ id: `inp-${base.id}-reps`, label: '次数', value: repsVal, delta: 1, step: 1, min: 1, inputmode: 'numeric', onChange: onChange('reps') }));
   return el('div', { class: 'set-entry' }, [
@@ -116,7 +118,7 @@ function readSetInputs(rowEl, base, ex) {
   const reps = toNumber(repsEl && repsEl.value);
   if (!bodyweight && (weight == null || weight < 0)) return { error: '先填这一组的重量' };
   if (reps == null || reps < 1 || !Number.isInteger(reps)) return { error: '先填这一组的次数（整数）' };
-  return { weight, reps };
+  return { weight: displayToLb(weight), reps }; // 存 lb
 }
 
 function renderRow(entry, template, handlers, ctx) {
@@ -251,12 +253,13 @@ export function formatClock(ms) {
 }
 
 // 组间秒表条的内容：只依赖 session 里的时间戳和 now，不累加
-export function restClockState(session, template, now) {
+export function restClockState(session, template, now, defaultRest = 90) {
   if (session.restStartedAt == null) {
-    return { idle: true, text: '--:--', ready: false, meta: '完成一组后开始计时' };
+    const canStart = session.lastSetCompletedAt != null; // 自动休息关着：做完一组后手动起表
+    return { idle: true, canStart, text: '--:--', ready: false, meta: canStart ? '按「开始计时」开始休息计时' : '完成一组后开始计时' };
   }
   const elapsedMs = now - session.restStartedAt;
-  const reference = restReferenceSeconds(session, template);
+  const reference = restReferenceSeconds(session, template, defaultRest);
   const base = session.lastSetExerciseId ? findExercise(template, session.lastSetExerciseId) : null;
   const entry = session.lastSetExerciseId ? findEntry(session, session.lastSetExerciseId) : null;
   const exercise = base && entry ? effectiveExercise(entry, base) : base; // 换了替代动作就显示替代动作名
@@ -268,30 +271,36 @@ export function restClockState(session, template, now) {
   };
 }
 
-function renderRestBar(session, template, now, onReset) {
-  const st = restClockState(session, template, now);
+function renderRestBar(session, template, now, onReset, defaultRest) {
+  const st = restClockState(session, template, now, defaultRest);
   return el('div', { class: 'rest-bar' }, [
     el('div', { class: 'rest-main' }, [
       el('div', { class: `rest-time${st.idle ? ' rest-time-idle' : ''}${st.ready ? ' rest-time-ready' : ''}`, text: st.text, 'aria-live': 'off' }),
       el('div', { class: 'rest-meta', text: st.meta }),
     ]),
-    el('button', { class: 'btn-secondary rest-reset', type: 'button', disabled: st.idle, onclick: onReset }, '重置'),
+    el('button', { class: 'btn-secondary rest-reset', type: 'button', disabled: st.idle && !st.canStart, onclick: onReset }, st.idle ? '开始计时' : '重置'),
   ]);
 }
 
 // 每秒只更新秒表条的文字和颜色，不重画整页（spec 3.3：显示值 = 现在 − 时间戳）
-export function updateRestClock(root, session, template, now) {
+export function updateRestClock(root, session, template, now, defaultRest = 90) {
   const time = root.querySelector('.rest-time');
   const meta = root.querySelector('.rest-meta');
   if (!time || !meta) return;
-  const st = restClockState(session, template, now);
+  const st = restClockState(session, template, now, defaultRest);
   if (time.textContent !== st.text) time.textContent = st.text;
   if (meta.textContent !== st.meta) meta.textContent = st.meta;
   time.classList.toggle('rest-time-idle', st.idle);
   time.classList.toggle('rest-time-ready', st.ready);
+  const btn = root.querySelector('.rest-reset');
+  if (btn) {
+    const label = st.idle ? '开始计时' : '重置';
+    if (btn.textContent !== label) btn.textContent = label;
+    btn.disabled = st.idle && !st.canStart;
+  }
 }
 
-export function renderTrain(root, { session, template, dateText, now, notice, prefill, last, suggest, inputs, historyLoaded, onSelect, onCompleteSet, onUndo, onExtra, onEnd, onSkip, onUnskip, onPickAlternate, onInput, onBack, onFinish, onReset }) {
+export function renderTrain(root, { session, template, dateText, now, notice, prefill, last, suggest, inputs, historyLoaded, defaultRestSeconds = 90, onSelect, onCompleteSet, onUndo, onExtra, onEnd, onSkip, onUnskip, onPickAlternate, onInput, onBack, onFinish, onReset }) {
   const sum = summarize(session, template);
   const handlers = { onSelect, onCompleteSet, onUndo, onExtra, onEnd, onSkip, onUnskip, onPickAlternate, onInput };
   const ctx = { prefill, last, suggest, inputs, historyLoaded, sessionId: session.id };
@@ -307,7 +316,7 @@ export function renderTrain(root, { session, template, dateText, now, notice, pr
           }),
         ]),
       ]),
-      renderRestBar(session, template, now, onReset),
+      renderRestBar(session, template, now, onReset, defaultRestSeconds),
     ]),
     notice ? el('p', { class: 'problem save-error', text: notice }) : null,
     el(

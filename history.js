@@ -1,4 +1,5 @@
 // history.js — 从已完成的训练里找"上次做这个动作"的数据。纯函数，不碰数据库。
+import { formatWeight } from './units.js';
 
 // 上一次做某个动作（同一替代动作口径）的各组：{ sessionId, date, sets: [{weight, reps}] }，没有返回 null。
 // sessions：listSessions 的结果（按 startedAt 倒序）；excludeId：当前这次训练，不算"上次"。
@@ -25,7 +26,7 @@ export function formatSets(sets, { bodyweight = false } = {}) {
     .map((set) => {
       const reps = set.reps == null ? '?' : set.reps;
       if (bodyweight) return `${reps}`;
-      const weight = set.weight == null ? '?' : set.weight;
+      const weight = set.weight == null ? '?' : formatWeight(set.weight, { withUnit: false });
       return `${weight}×${reps}`;
     })
     .join(' · ');

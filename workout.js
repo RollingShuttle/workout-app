@@ -141,7 +141,8 @@ export function completeSet(session, template, id, now, input = {}) {
   const updated = { ...entry, sets: [...entry.sets, set] };
   const done = isDone(updated, exercise);
   const next = activate(session, id, updated);
-  const stamped = { ...next, lastSetCompletedAt: now, lastSetExerciseId: id, restStartedAt: now };
+  // 设置里关了「自动开始休息」时不起秒表（restStartedAt 留 null，按「开始计时」再起）
+  const stamped = { ...next, lastSetCompletedAt: now, lastSetExerciseId: id, restStartedAt: input.autoStartRest === false ? null : now };
   if (done) {
     return {
       ...stamped,
@@ -183,7 +184,8 @@ export function undoLastSet(session, template, id) {
     ...next,
     lastSetCompletedAt: latest ? latest.at : null,
     lastSetExerciseId: latest ? latest.exerciseId : null,
-    restStartedAt: anchorRemoved ? (latest ? latest.at : null) : session.restStartedAt,
+    // 秒表本来没在走（自动休息关着）就保持不走
+    restStartedAt: anchorRemoved ? (session.restStartedAt == null ? null : latest ? latest.at : null) : session.restStartedAt,
   };
 }
 
@@ -206,13 +208,15 @@ export function hydrateSession(session) {
   return {
     ...session,
     lastSetExerciseId: session.lastSetExerciseId ?? (latest ? latest.exerciseId : null),
-    restStartedAt: session.restStartedAt ?? session.lastSetCompletedAt ?? (latest ? latest.at : null),
+    // 只给缺字段的旧草稿补；明确为 null（自动休息关着、还没按开始）的保持 null
+    restStartedAt: session.restStartedAt !== undefined ? session.restStartedAt : session.lastSetCompletedAt ?? (latest ? latest.at : null),
   };
 }
 
 // 重置秒表：从现在重新计时。不改 lastSetCompletedAt，所以下一组的 restTakenSeconds 仍按真实的上一组算。
+// 也用于「开始计时」（自动休息关着时手动起表）；还没做过任何一组时没意义，原样返回
 export function resetRest(session, now) {
-  if (session.restStartedAt == null) return session;
+  if (session.lastSetCompletedAt == null && session.restStartedAt == null) return session;
   return { ...session, restStartedAt: now };
 }
 
