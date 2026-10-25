@@ -80,6 +80,7 @@ export function renderSettings(root, { settings, version, info, isTest, importPr
     ]),
     section('数据', [
       el('p', { class: 'settings-stat', text: `${countText} · ${persistedText}` }),
+      info.backupText ? el('p', { class: 'muted settings-note', text: `${info.backupText}。每完成 10 次训练首页会提醒一次` }) : null,
       el('div', { class: 'settings-actions' }, [
         btn('导出 JSON 备份', onExport, 'btn-primary'),
         el('input', {

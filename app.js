@@ -31,7 +31,7 @@ import {
   syncEntries,
 } from './workout.js';
 import { renderTrain, renderTrainUnavailable, renderAlternateSheet, updateRestClock, updateLastRef, restClockState } from './train-view.js';
-import { putSession, deleteSession, findDraft, listSessions, requestPersistentStorage, putSessions, clearSessions, clearSettings, isPersisted } from './db.js';
+import { putSession, deleteSession, findDraft, listSessions, requestPersistentStorage, putSessions, clearSessions, clearSettings, isPersisted, getSetting, putSetting } from './db.js';
 import { lastSetsFor, prefillFor } from './history.js';
 import { renderHistoryList, renderSessionDetail, renderExerciseChart } from './history-view.js';
 import { suggestionFor } from './progression.js';
@@ -54,10 +54,11 @@ import { renderPlanOverview, renderPlanDay, renderAssignmentSheet, renderExercis
 import { loadSettings, saveSettings, normalizeSettings } from './settings.js';
 import { setDisplayUnit } from './units.js';
 import { setWakeLock, wakeLockSupported, unlockAudio, beep, audioSupported } from './device.js';
-import { buildBackup, backupFileName, parseBackup } from './backup.js';
+import { buildBackup, backupFileName, parseBackup, normalizeBackupMeta, backupReminder, finishedTrainingCount } from './backup.js';
 import { renderSettings } from './settings-view.js';
 
-const APP_VERSION = '0.13.0';
+const APP_VERSION = '0.14.0';
+const BACKUP_META_KEY = 'backup';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
 // 全局状态：计划、当前"今天"、进行中的训练、最近一次保存错误（null = 正常）。
@@ -86,6 +87,7 @@ const state = {
   settings: normalizeSettings({}), // spec 2.4；启动时从库里读
   importPreview: null, // 设置页选了备份文件后的预览 { name, data, summary } 或 { name, error }
   persisted: null, // navigator.storage.persisted() 的结果，设置页显示
+  backupMeta: normalizeBackupMeta(null), // 上次备份的训练数和时间（settings 表 key=backup）
 };
 
 function setStatus(text) {
@@ -387,6 +389,7 @@ function renderHome(root, day) {
     plan.blank ? el('p', { class: 'today-note today-note-plain', text: '现在是空白计划，每天都显示休息。到「计划」里加训练日和每周安排。' }) : null,
     draft && !draftIsToday ? renderDraftCard(draft) : null,
     renderTodayActivities(todayActs, plan),
+    state.historyReady && !state.historyError ? renderBackupCard() : null,
     day.kind === 'strength' && !(draft && !draftIsToday)
       ? el('div', { class: 'home-actions' }, [
           el(
@@ -411,6 +414,44 @@ function renderHome(root, day) {
       onClose: () => { state.activitySheet = null; render(); },
     });
   }
+}
+
+// 备份提醒卡：自上次备份（或上次"稍后再说"）又完成了 10 次训练才出现
+function renderBackupCard() {
+  const r = backupReminder(state.history, state.backupMeta);
+  if (!r.due) return null;
+  const text = state.backupMeta.lastAt
+    ? `上次备份后又完成了 ${r.since} 次训练（共 ${r.finished} 次）。数据只在这台手机里，导出一份 JSON 更稳妥。`
+    : `已完成 ${r.finished} 次训练，还没备份过。数据只在这台手机里，导出一份 JSON 更稳妥。`;
+  return el('section', { class: 'card backup-card' }, [
+    el('div', { class: 'row-label', text: '该备份了' }),
+    el('div', { text }),
+    el('div', { class: 'home-actions home-actions-row' }, [
+      el('a', { class: 'btn-primary link-btn', href: '#settings' }, '去导出'),
+      el('button', { class: 'btn-secondary link-btn', type: 'button', onclick: dismissBackupReminder }, '稍后再说'),
+    ]),
+  ]);
+}
+
+function saveBackupMeta(meta) {
+  state.backupMeta = normalizeBackupMeta(meta);
+  putSetting(BACKUP_META_KEY, state.backupMeta).catch((err) => {
+    state.saveError = `备份记录没能保存：${err.message}`;
+    render();
+  });
+}
+
+// "稍后再说"：从现在的次数重新数 10 次，不记为已备份
+function dismissBackupReminder() {
+  const r = backupReminder(state.history, state.backupMeta);
+  saveBackupMeta({ ...state.backupMeta, lastCount: r.finished });
+  render();
+}
+
+// 导出成功后调用：提醒消失，设置页显示上次备份时间
+function markBackedUp(sessions, now) {
+  saveBackupMeta({ lastCount: finishedTrainingCount(sessions), lastAt: now });
+  render();
 }
 
 /* ---------- 训练模式 ---------- */
@@ -843,6 +884,7 @@ async function exportBackup() {
   if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title: name });
+      markBackedUp(sessions, now);
       return;
     } catch (err) {
       if (err && err.name === 'AbortError') return; // 用户取消
@@ -855,6 +897,7 @@ async function exportBackup() {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
+  markBackedUp(sessions, now);
 }
 
 function previewImport(file) {
@@ -951,10 +994,19 @@ async function clearAllData() {
   state.saveError = null;
   state.settings = normalizeSettings({});
   setDisplayUnit(state.settings.unit);
+  state.backupMeta = normalizeBackupMeta(null);
   state.plan = state.builtinPlan;
   state.firstRun = true;
   location.hash = '';
   render();
+}
+
+function backupStatusText() {
+  if (!state.historyReady || state.historyError) return null;
+  const r = backupReminder(state.history, state.backupMeta);
+  return state.backupMeta.lastAt
+    ? `上次备份：${formatDateText(new Date(state.backupMeta.lastAt))} · 之后完成 ${r.since} 次训练`
+    : `还没备份过 · 已完成 ${r.finished} 次训练`;
 }
 
 function renderSettingsView(root) {
@@ -966,6 +1018,7 @@ function renderSettingsView(root) {
     info: {
       sessionCount: state.historyReady && !state.historyError ? state.history.length : null,
       persisted: state.persisted,
+      backupText: backupStatusText(),
       wakeLockSupported: wakeLockSupported(),
       audioSupported: audioSupported(),
     },
@@ -1133,11 +1186,17 @@ async function main() {
     state.plan = state.builtinPlan;
     state.firstRun = true;
   }
+  const metaLoad = getSetting(BACKUP_META_KEY).then(
+    (v) => ({ meta: normalizeBackupMeta(v) }),
+    () => ({ meta: null })
+  );
   const settingsFirst = await Promise.race([
     settingsLoad,
     new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), DRAFT_LOAD_TIMEOUT_MS)),
   ]);
   if (settingsFirst.settings) state.settings = settingsFirst.settings;
+  const metaFirst = await Promise.race([metaLoad, new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), DRAFT_LOAD_TIMEOUT_MS))]);
+  if (metaFirst.meta) state.backupMeta = metaFirst.meta;
   setDisplayUnit(state.settings.unit);
   // 读草稿最多等 3 秒：IndexedDB 偶尔会挂住（WebKit 有过 open 不回调的问题），不能让首页跟着卡死。
   // 超时后先画首页，草稿晚到时只要用户还没开始新的训练就补上。

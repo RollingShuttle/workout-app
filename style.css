@@ -1107,3 +1107,13 @@ input.num:focus {
   width: 100%;
   margin-top: 8px;
 }
+
+/* 备份提醒卡 */
+.backup-card {
+  padding: 12px 16px 16px;
+  border-left: 4px solid var(--accent);
+}
+
+.backup-card .home-actions {
+  margin-top: 12px;
+}

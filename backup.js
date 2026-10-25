@@ -67,3 +67,30 @@ export function mergeSessions(existing, imported) {
   for (const s of imported) byId.set(s.id, s);
   return [...byId.values()];
 }
+
+/* ---------- 备份提醒（spec 2.5：每完成 10 次训练提醒一次） ---------- */
+
+export const BACKUP_REMIND_EVERY = 10;
+
+// settings 表 key='backup'：{ lastCount: 上次备份 / 上次按"稍后再说"时的已完成训练数, lastAt: 上次导出时间 | null }
+export function normalizeBackupMeta(raw) {
+  const r = raw && typeof raw === 'object' ? raw : {};
+  const n = Number(r.lastCount);
+  const at = Number(r.lastAt);
+  return {
+    lastCount: Number.isInteger(n) && n >= 0 ? n : 0,
+    lastAt: Number.isFinite(at) && at > 0 ? at : null,
+  };
+}
+
+// 已完成的力量训练数：打球 / 有氧 / 散步是"记录"，不算"训练"
+export function finishedTrainingCount(sessions) {
+  return sessions.filter((s) => s.finishedAt && (!s.activityKind || s.activityKind === 'strength')).length;
+}
+
+// since：上次备份（或上次"稍后再说"）之后又完成了几次；满 10 次就该提醒
+export function backupReminder(sessions, meta) {
+  const finished = finishedTrainingCount(sessions);
+  const since = Math.max(0, finished - meta.lastCount);
+  return { finished, since, due: since >= BACKUP_REMIND_EVERY };
+}
