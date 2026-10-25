@@ -68,19 +68,32 @@ export function mergeSessions(existing, imported) {
   return [...byId.values()];
 }
 
-/* ---------- 备份提醒（spec 2.5：每完成 10 次训练提醒一次） ---------- */
+/* ---------- 备份提醒（按日期：超过 14 天没备份且期间有新训练就提醒；用户决定，代替 spec 2.5 的"每 10 次"） ---------- */
 
-export const BACKUP_REMIND_EVERY = 10;
+export const BACKUP_REMIND_DAYS = 14;
+export const BACKUP_SNOOZE_DAYS = 7;
+const DAY_MS = 86400000;
 
-// settings 表 key='backup'：{ lastCount: 上次备份 / 上次按"稍后再说"时的已完成训练数, lastAt: 上次导出时间 | null }
+// settings 表 key='backup'：{ lastCount: 上次导出时的已完成训练数, lastAt: 上次导出时间 | null, snoozedUntil: "稍后再说"推迟到的时间 | null }
 export function normalizeBackupMeta(raw) {
   const r = raw && typeof raw === 'object' ? raw : {};
   const n = Number(r.lastCount);
   const at = Number(r.lastAt);
+  const until = Number(r.snoozedUntil);
   return {
     lastCount: Number.isInteger(n) && n >= 0 ? n : 0,
     lastAt: Number.isFinite(at) && at > 0 ? at : null,
+    snoozedUntil: Number.isFinite(until) && until > 0 ? until : null,
   };
+}
+
+function earliestFinishedAt(sessions) {
+  let min = null;
+  for (const s of sessions) {
+    if (!s.finishedAt || (s.activityKind && s.activityKind !== 'strength')) continue;
+    if (min == null || s.finishedAt < min) min = s.finishedAt;
+  }
+  return min;
 }
 
 // 已完成的力量训练数：打球 / 有氧 / 散步是"记录"，不算"训练"
@@ -88,9 +101,14 @@ export function finishedTrainingCount(sessions) {
   return sessions.filter((s) => s.finishedAt && (!s.activityKind || s.activityKind === 'strength')).length;
 }
 
-// since：上次备份（或上次"稍后再说"）之后又完成了几次；满 10 次就该提醒
-export function backupReminder(sessions, meta) {
+// days：距上次备份几天（没备份过就从第一次完成训练算起）；since：上次备份之后又完成了几次。
+// 到期 = 满 14 天 且 期间有新训练 且 没在"稍后再说"的推迟期内。
+export function backupReminder(sessions, meta, now) {
   const finished = finishedTrainingCount(sessions);
   const since = Math.max(0, finished - meta.lastCount);
-  return { finished, since, due: since >= BACKUP_REMIND_EVERY };
+  const ref = meta.lastAt ?? earliestFinishedAt(sessions);
+  const days = ref == null ? null : Math.max(0, Math.floor((now - ref) / DAY_MS));
+  const snoozed = meta.snoozedUntil != null && now < meta.snoozedUntil;
+  const due = since > 0 && days != null && days >= BACKUP_REMIND_DAYS && !snoozed;
+  return { finished, since, days, snoozed, due };
 }

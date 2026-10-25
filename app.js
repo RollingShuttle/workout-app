@@ -54,10 +54,10 @@ import { renderPlanOverview, renderPlanDay, renderAssignmentSheet, renderExercis
 import { loadSettings, saveSettings, normalizeSettings } from './settings.js';
 import { setDisplayUnit } from './units.js';
 import { setWakeLock, wakeLockSupported, unlockAudio, beep, audioSupported } from './device.js';
-import { buildBackup, backupFileName, parseBackup, normalizeBackupMeta, backupReminder, finishedTrainingCount } from './backup.js';
+import { buildBackup, backupFileName, parseBackup, normalizeBackupMeta, backupReminder, finishedTrainingCount, BACKUP_REMIND_DAYS, BACKUP_SNOOZE_DAYS } from './backup.js';
 import { renderSettings } from './settings-view.js';
 
-const APP_VERSION = '0.14.0';
+const APP_VERSION = '0.14.1';
 const BACKUP_META_KEY = 'backup';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
@@ -416,13 +416,13 @@ function renderHome(root, day) {
   }
 }
 
-// 备份提醒卡：自上次备份（或上次"稍后再说"）又完成了 10 次训练才出现
+// 备份提醒卡：超过 14 天没备份、期间又完成过训练才出现；"稍后再说"推迟 7 天
 function renderBackupCard() {
-  const r = backupReminder(state.history, state.backupMeta);
+  const r = backupReminder(state.history, state.backupMeta, Date.now());
   if (!r.due) return null;
   const text = state.backupMeta.lastAt
-    ? `上次备份后又完成了 ${r.since} 次训练（共 ${r.finished} 次）。数据只在这台手机里，导出一份 JSON 更稳妥。`
-    : `已完成 ${r.finished} 次训练，还没备份过。数据只在这台手机里，导出一份 JSON 更稳妥。`;
+    ? `已经 ${r.days} 天没备份了，期间完成了 ${r.since} 次训练。数据只在这台手机里，导出一份 JSON 更稳妥。`
+    : `练了 ${r.days} 天（${r.finished} 次训练），还没备份过。数据只在这台手机里，导出一份 JSON 更稳妥。`;
   return el('section', { class: 'card backup-card' }, [
     el('div', { class: 'row-label', text: '该备份了' }),
     el('div', { text }),
@@ -441,16 +441,15 @@ function saveBackupMeta(meta) {
   });
 }
 
-// "稍后再说"：从现在的次数重新数 10 次，不记为已备份
+// "稍后再说"：推迟 7 天，不记为已备份
 function dismissBackupReminder() {
-  const r = backupReminder(state.history, state.backupMeta);
-  saveBackupMeta({ ...state.backupMeta, lastCount: r.finished });
+  saveBackupMeta({ ...state.backupMeta, snoozedUntil: Date.now() + BACKUP_SNOOZE_DAYS * 86400000 });
   render();
 }
 
 // 导出成功后调用：提醒消失，设置页显示上次备份时间
 function markBackedUp(sessions, now) {
-  saveBackupMeta({ lastCount: finishedTrainingCount(sessions), lastAt: now });
+  saveBackupMeta({ lastCount: finishedTrainingCount(sessions), lastAt: now, snoozedUntil: null });
   render();
 }
 
@@ -1003,10 +1002,11 @@ async function clearAllData() {
 
 function backupStatusText() {
   if (!state.historyReady || state.historyError) return null;
-  const r = backupReminder(state.history, state.backupMeta);
-  return state.backupMeta.lastAt
-    ? `上次备份：${formatDateText(new Date(state.backupMeta.lastAt))} · 之后完成 ${r.since} 次训练`
+  const r = backupReminder(state.history, state.backupMeta, Date.now());
+  const base = state.backupMeta.lastAt
+    ? `上次备份：${formatDateText(new Date(state.backupMeta.lastAt))}（${r.days} 天前）· 之后完成 ${r.since} 次训练`
     : `还没备份过 · 已完成 ${r.finished} 次训练`;
+  return `${base}。超过 ${BACKUP_REMIND_DAYS} 天没备份且有新训练时首页会提醒${r.snoozed ? '（已推迟）' : ''}`;
 }
 
 function renderSettingsView(root) {
