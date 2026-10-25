@@ -307,6 +307,23 @@ export function finishSession(session, template, now) {
 // 最后一组之后超过这么久才点"结束"（忘了结束 / 隔天补结束），结束时刻就按最后一组算，总时长才不会是一整天
 export const STALE_FINISH_MS = 60 * 60 * 1000;
 
+// 实际训练时长：从开始 → 每一组 → 结束，只累加不超过 STALE_FINISH_MS 的间隔。
+// 跨天续练（昨天几组、今天几组）不会算成 24 小时。
+export function activeDurationMs(session, finishedAt = session.finishedAt) {
+  const times = [];
+  for (const e of session.entries || []) for (const s of e.sets || []) if (typeof s.completedAt === 'number') times.push(s.completedAt);
+  times.sort((a, b) => a - b);
+  if (typeof finishedAt === 'number') times.push(finishedAt);
+  let total = 0;
+  let prev = session.startedAt;
+  for (const t of times) {
+    const d = t - prev;
+    if (d > 0 && d <= STALE_FINISH_MS) total += d;
+    if (t > prev) prev = t;
+  }
+  return total;
+}
+
 export function finishedAtFor(session, now) {
   const last = latestCompletedAt(session.entries) ?? session.startedAt;
   return now - last > STALE_FINISH_MS ? last : now;

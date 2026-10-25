@@ -27,12 +27,14 @@ import {
   findExercise,
   findEntry,
   sessionHasInput,
+  activeDurationMs,
 } from './workout.js';
 import { renderTrain, renderTrainUnavailable, renderAlternateSheet, updateRestClock, updateLastRef } from './train-view.js';
 import { putSession, deleteSession, findDraft, listSessions, requestPersistentStorage } from './db.js';
 import { lastSetsFor, prefillFor } from './history.js';
+import { renderHistoryList, renderSessionDetail, renderExerciseChart } from './history-view.js';
 
-const APP_VERSION = '0.7.0';
+const APP_VERSION = '0.8.0';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
 // 全局状态：计划、当前"今天"、进行中的训练、最近一次保存错误（null = 正常）。
@@ -51,7 +53,9 @@ const state = {
   history: [],
   historyLoaded: false, // 已发起读取
   historyReady: false, // 已读到结果
+  historyError: null, // 读取失败的原因
   inputs: null,
+  chartFrom: null, // 从哪次训练详情点进折线页的，返回时回到它
 };
 
 function setStatus(text) {
@@ -80,8 +84,64 @@ function findTemplate(id) {
   return (state.plan.dayTemplates || []).find((t) => t.id === id) || null;
 }
 
+// 路由：#train 训练页；#history 历史列表；#history/<id> 单次详情；#exercise/<id> 动作折线；其余首页
 function currentView() {
-  return location.hash === '#train' ? 'train' : 'home';
+  const h = location.hash;
+  if (h === '#train') return 'train';
+  if (h === '#history') return 'history';
+  if (h.startsWith('#history/')) return 'session';
+  if (h.startsWith('#exercise/')) return 'exercise';
+  return 'home';
+}
+
+function routeParam() {
+  const i = location.hash.indexOf('/');
+  if (i < 0) return null;
+  try {
+    return decodeURIComponent(location.hash.slice(i + 1));
+  } catch (_) {
+    return null; // 坏掉的 %xx 当作找不到，不让整个 render 抛错
+  }
+}
+
+// 历史记录只读一次；读到后正在看的页面需要它就重画。训练页上正在打字时只就地更新"上次"行。
+function ensureHistory() {
+  if (state.historyLoaded) return;
+  state.historyLoaded = true;
+  listSessions({ test: state.isTest }).then(
+    (rows) => {
+      state.history = rows;
+      state.historyReady = true;
+      const view = currentView();
+      if (view === 'home') return;
+      if (view === 'train') {
+        const focused = document.activeElement;
+        if (focused && focused.matches('#app input.num') && state.session && state.trainTemplate) {
+          updateLastRef(document.getElementById('app'), state.session, state.trainTemplate, lastFor);
+          return;
+        }
+      }
+      render();
+    },
+    (err) => {
+      // 读失败：历史页显示错误和"重试"，训练页退回"没有上次记录"；不自动循环重试
+      state.historyError = err && err.message ? err.message : '数据库不可用';
+      state.historyReady = true;
+      if (currentView() !== 'home') render();
+    }
+  );
+}
+
+function retryHistory() {
+  state.historyLoaded = false;
+  state.historyReady = false;
+  state.historyError = null;
+  ensureHistory();
+  render();
+}
+
+function lastFor(entry) {
+  return lastSetsFor(state.history, entry.exerciseId, entry.usedAlternate, state.session ? state.session.id : null);
 }
 
 function sessionMatches(session, day) {
@@ -235,6 +295,7 @@ function renderHome(root, day) {
       ...day.problems.map((p) => el('p', { class: 'problem', text: p })),
     ]),
     draft && !draftIsToday ? renderDraftCard(draft) : null,
+    el('div', { class: 'home-links' }, [el('a', { class: 'btn-secondary link-btn', href: '#history' }, '历史记录')]),
     day.kind === 'strength' && !(draft && !draftIsToday)
       ? el('div', { class: 'home-actions' }, [
           el(
@@ -272,6 +333,7 @@ async function finishTraining(session, template) {
     state.inputs = null;
     state.historyLoaded = false; // 刚结束的这次要算进"上次"
     state.historyReady = false;
+    state.historyError = null;
     location.hash = '';
     render(); // 本来就在首页时 hash 没变，不会触发 hashchange，手动画一次
   };
@@ -284,7 +346,7 @@ async function finishTraining(session, template) {
   // 隔天才来结束的草稿：按最后一组的时间算结束，用时才不会算成一整天（规则在 workout.js）
   const finishedAt = finishedAtFor(session, now);
   const totalSets = countSets(session, template);
-  const minutes = Math.max(1, Math.round((finishedAt - session.startedAt) / 60000));
+  const minutes = Math.max(1, Math.round(activeDurationMs(session, finishedAt) / 60000));
   if (!window.confirm(`结束训练？共 ${totalSets} 组，用时 ${minutes} 分钟。`)) return;
   const ok = await persistSession(finishSession(session, template, finishedAt));
   if (!ok) {
@@ -334,27 +396,7 @@ function renderTrainView(root, day) {
     render();
   };
   state.trainTemplate = template;
-  const lastFor = (entry) => lastSetsFor(state.history, entry.exerciseId, entry.usedAlternate, state.session.id);
-  if (!state.historyLoaded) {
-    state.historyLoaded = true; // 先置位，避免重画时反复读
-    listSessions({ test: state.isTest }).then(
-      (rows) => {
-        state.history = rows;
-        state.historyReady = true;
-        if (currentView() !== 'train') return;
-        // 正在输入框里打字：别整页重画（会收起键盘、丢掉"37."这种没打完的值），只就地更新"上次"那一行
-        const focused = document.activeElement;
-        if (focused && focused.matches('#app input.num')) {
-          updateLastRef(document.getElementById('app'), state.session, state.trainTemplate, lastFor);
-          return;
-        }
-        render();
-      },
-      () => {
-        state.historyLoaded = false;
-      }
-    );
-  }
+  ensureHistory();
   // 草稿里带着上次没提交的输入值（页面被 iOS 回收后重载）：恢复成暂存
   if (!state.inputs && state.session.pendingInput) state.inputs = state.session.pendingInput;
   renderTrain(root, {
@@ -469,17 +511,60 @@ function watchRestVisibility() {
 
 /* ---------- 路由与启动 ---------- */
 
+function renderHistoryView(root, view) {
+  ensureHistory();
+  const sessions = state.history;
+  const loading = !state.historyReady;
+  if (view === 'history') {
+    renderHistoryList(root, {
+      sessions,
+      plan: state.plan,
+      loading,
+      error: state.historyError,
+      onRetry: retryHistory,
+      onOpen: (id) => { location.hash = `#history/${encodeURIComponent(id)}`; },
+      onBack: () => { location.hash = ''; },
+    });
+    return;
+  }
+  if (view === 'session') {
+    const id = routeParam();
+    const session = sessions.find((x) => x.id === id);
+    if (!session) {
+      renderTrainUnavailable(root, { message: loading ? '读取中…' : '找不到这次训练的记录。', onBack: () => { location.hash = '#history'; } });
+      return;
+    }
+    state.chartFrom = session.id;
+    renderSessionDetail(root, {
+      session,
+      plan: state.plan,
+      onOpenExercise: (exerciseId) => { location.hash = `#exercise/${encodeURIComponent(exerciseId)}`; },
+      onBack: () => { location.hash = '#history'; },
+    });
+    return;
+  }
+  renderExerciseChart(root, {
+    exerciseId: routeParam(),
+    plan: state.plan,
+    sessions,
+    loading,
+    onBack: () => { location.hash = state.chartFrom ? `#history/${encodeURIComponent(state.chartFrom)}` : '#history'; },
+  });
+}
+
 function render() {
   const root = document.getElementById('app');
   const day = resolveDay(state.plan, state.date);
-  if (currentView() === 'train') {
+  const view = currentView();
+  if (view === 'train') {
     renderTrainView(root, day);
-  } else {
-    stopRestTicker();
-    state.trainTemplate = null;
-    state.picker = null; // 选单开着时离开训练页，别让它下次再弹出来
-    renderHome(root, day);
+    return;
   }
+  stopRestTicker();
+  state.trainTemplate = null;
+  state.picker = null; // 选单开着时离开训练页，别让它下次再弹出来
+  if (view === 'home') renderHome(root, day);
+  else renderHistoryView(root, view);
 }
 
 // iOS 主屏幕 App 从后台恢复时不会重新加载页面；跨天了就更新"今天"。
