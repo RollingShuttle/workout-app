@@ -122,6 +122,17 @@ export async function findDraft({ test = false } = {}) {
   return rows.find((s) => !s.finishedAt) || null;
 }
 
+// settings 表：key → value。现在只放 'plan'（整份训练计划）。
+export function getSetting(key) {
+  return withStore('settings', 'readonly', (store) => requestToPromise(store.get(key))).then((row) =>
+    row ? row.value : undefined
+  );
+}
+
+export function putSetting(key, value) {
+  return withStore('settings', 'readwrite', (store) => requestToPromise(store.put({ key, value })));
+}
+
 // 申请持久存储（spec 2.5）：支持的话系统存储紧张时也不清这个站的数据。失败不影响使用。
 export async function requestPersistentStorage() {
   try {

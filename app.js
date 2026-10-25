@@ -36,8 +36,9 @@ import { renderHistoryList, renderSessionDetail, renderExerciseChart } from './h
 import { suggestionFor } from './progression.js';
 import { createActivitySession, weekSummary, ballCountThisWeek, BALL_WEEKLY_LIMIT, activitiesOn } from './activity.js';
 import { renderActivitySheet, renderWeekStrip, renderTodayActivities } from './activity-view.js';
+import { loadStoredPlan, savePlan, blankPlanFrom } from './plan-store.js';
 
-const APP_VERSION = '0.10.0';
+const APP_VERSION = '0.11.0';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
 // 全局状态：计划、当前"今天"、进行中的训练、最近一次保存错误（null = 正常）。
@@ -60,6 +61,8 @@ const state = {
   inputs: null,
   chartFrom: null, // 从哪次训练详情点进折线页的，返回时回到它
   activitySheet: null, // 打球 / 有氧 / 散步记录选单打开时的参数
+  builtinPlan: null, // training-plan.json 的内容，只作内置模板
+  firstRun: false, // 库里还没有计划：显示首次启动页
 };
 
 function setStatus(text) {
@@ -346,6 +349,7 @@ function renderHome(root, day) {
       renderBody(day, plan),
       ...day.problems.map((p) => el('p', { class: 'problem', text: p })),
     ]),
+    plan.blank ? el('p', { class: 'today-note today-note-plain', text: '现在是空白计划，每天都显示休息。计划编辑做好后可以在这里加训练日。' }) : null,
     draft && !draftIsToday ? renderDraftCard(draft) : null,
     renderTodayActivities(todayActs, plan),
     day.kind === 'strength' && !(draft && !draftIsToday)
@@ -623,8 +627,40 @@ function renderHistoryView(root, view) {
   });
 }
 
+// 首次启动：选"载入内置计划"或"从空白计划开始"，选了就写库
+async function choosePlan(plan) {
+  try {
+    await savePlan(plan);
+    state.saveError = null;
+  } catch (err) {
+    state.saveError = `计划没能保存：${err.message}`;
+  }
+  state.plan = plan;
+  state.firstRun = false;
+  render();
+}
+
+function renderFirstRun(root) {
+  replaceChildren(root, [
+    el('header', { class: 'today-header' }, [el('h1', { class: 'today-title', text: '第一次打开' })]),
+    el('section', { class: 'card firstrun' }, [
+      el('p', { text: '先选一份训练计划。所有数据只存在这台手机里，没有账号、不上传。' }),
+      el('button', { class: 'btn-primary', type: 'button', onclick: () => choosePlan(state.builtinPlan) }, '载入内置计划'),
+      el('p', { class: 'ex-notes', text: '内置计划：推日 / 拉日 / 腿日 / 上肢B，周二周五可选打球，含过渡周调课。' }),
+      el('button', { class: 'btn-secondary link-btn', type: 'button', onclick: () => choosePlan(blankPlanFrom(state.builtinPlan)) }, '从空白计划开始'),
+      el('p', { class: 'ex-notes', text: '空白计划：每天休息，只能记打球 / 散步 / 二区，训练日以后在计划编辑里加。' }),
+    ]),
+    state.saveError ? el('p', { class: 'problem save-error', text: state.saveError }) : null,
+  ]);
+}
+
 function render() {
   const root = document.getElementById('app');
+  if (state.firstRun) {
+    stopRestTicker();
+    renderFirstRun(root);
+    return;
+  }
   const day = resolveDay(state.plan, state.date);
   const view = currentView();
   if (view === 'train') {
@@ -694,10 +730,28 @@ async function main() {
   state.date = date;
   state.isTest = isTest;
   try {
-    state.plan = await loadPlan();
+    state.builtinPlan = await loadPlan();
   } catch (err) {
-    root.replaceChildren(el('p', { class: 'problem', text: `读取训练计划失败：${err.message}` }));
+    root.replaceChildren(el('p', { class: 'problem', text: `读取内置训练计划失败：${err.message}` }));
     return;
+  }
+  // 运行时的计划在 IndexedDB 里；没有就进首次启动页让用户选。读库最多等 3 秒，挂住就先用内置计划。
+  const storedLoad = loadStoredPlan().then(
+    (plan) => ({ plan }),
+    (err) => ({ error: err })
+  );
+  const storedFirst = await Promise.race([
+    storedLoad,
+    new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), DRAFT_LOAD_TIMEOUT_MS)),
+  ]);
+  if (storedFirst.plan) {
+    state.plan = storedFirst.plan;
+  } else if (storedFirst.error || storedFirst.timedOut) {
+    state.plan = state.builtinPlan;
+    state.saveError = `读取计划失败：${storedFirst.error ? storedFirst.error.message : '数据库没有响应'}，暂时用内置计划`;
+  } else {
+    state.plan = state.builtinPlan;
+    state.firstRun = true;
   }
   // 读草稿最多等 3 秒：IndexedDB 偶尔会挂住（WebKit 有过 open 不回调的问题），不能让首页跟着卡死。
   // 超时后先画首页，草稿晚到时只要用户还没开始新的训练就补上。

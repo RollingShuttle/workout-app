@@ -923,3 +923,23 @@ input.num:focus {
 .sheet-warning {
   margin: 0 0 10px;
 }
+
+/* 首次启动页 */
+.firstrun {
+  padding: 16px;
+}
+
+.firstrun p {
+  margin: 0 0 12px;
+}
+
+.firstrun .btn-primary,
+.firstrun .btn-secondary {
+  margin-bottom: 8px;
+}
+
+.firstrun .btn-secondary {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+}
