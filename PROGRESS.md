@@ -24,6 +24,7 @@
 - 2026-10-24：结束训练的汇总表单（spec 3.2）：总组数、用时、每个动作的状态 / 组数 / 最佳组，"保存并结束"才写库，"继续训练"回去接着练。**spec 的功能项全部完成。**
 - 2026-10-25：真机反馈两条：连点 ± 按钮页面放大缩小（iOS 双击缩放）→ 全局 touch-action: manipulation；数值要能手动输入任意数（器械档位不是 1 / 2.5）→ step="any"，± 只在当前值上加减不再对齐档位。
 - 2026-10-25：Apple Health 的打球 / 二区 / 散步可以同步进来：手机上用快捷指令导出"运动记录.txt"（搭建步骤 docs/shortcut-apple-health.md），设置页"导入 Apple Health 运动记录"选文件 → 预览每条"记为"→ 入库，自动去重。
+- 2026-10-25：实测 iOS 18 的快捷指令读不到体能训练（Find Health Samples 没有 Workouts 类型），用户决定先不做 Apple Health 同步：设置页的入口和说明已撤掉，hk-import.js 和 app.js 里的处理代码保留。
 
 ## 部署
 
@@ -110,6 +111,7 @@
 
 ## 以后再说
 
+- Apple Health 的打球 / 二区同步：系统快捷指令读不到体能训练，要做只能走健康 App 全量导出（export.xml 流式解析）或第三方导出 App（Health Auto Export 等）的 JSON；导入的预览 / 映射 / 去重已在 hk-import.js，入口撤掉了（settings-view.js 里有注释说明怎么加回来）。
 - 秒表到参考时长的提示音（默认关）
 - 有氧记录是否手动填 Apple Watch 平均心率和 Zone3+ 时间
 - SW 有新版本时的"立即刷新"按钮

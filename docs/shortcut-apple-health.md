@@ -1,5 +1,7 @@
 # 用快捷指令把 Apple Health 的打球 / 二区记录导进 App
 
+> **2026-10-25 结论：这条路不通，先搁置。** 实测 iOS 18 的 Find Health Samples 的 Type 列表里没有 Workouts，系统自带的快捷指令读不到体能训练。App 里的导入代码（hk-import.js）保留，设置页的入口已撤掉。要重新做，只能走健康 App 全量导出（export.xml）或第三方导出 App（Health Auto Export 等）的 JSON。下面的步骤留作记录。
+
 网页 App 读不了 Apple Health，所以分两步：手机上跑一次快捷指令生成一个文本文件，再在 App 的"设置 → 导入 Apple Health 运动记录"里选这个文件。每次想同步就重复这两步，重复的记录会被自动跳过。
 
 ## 文件格式

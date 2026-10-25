@@ -142,22 +142,10 @@ export function renderSettings(root, { settings, version, info, isTest, importPr
           },
         }),
         btn('导入 JSON 备份', () => root.querySelector('#set-import').click()),
-        el('input', {
-          type: 'file',
-          accept: '.txt,.json,text/plain,application/json',
-          class: 'settings-file',
-          id: 'set-hk',
-          'aria-label': '选择快捷指令导出的运动记录文件',
-          onchange: (e) => {
-            const f = e.target.files && e.target.files[0];
-            if (f) onHkFile(f);
-            e.target.value = '';
-          },
-        }),
-        btn('导入 Apple Health 运动记录', () => root.querySelector('#set-hk').click()),
       ]),
-      el('p', { class: 'muted settings-note', text: 'Apple Health 的打球 / 二区 / 散步：先在手机上用快捷指令导出"运动记录.txt"（搭建步骤见仓库 docs/shortcut-apple-health.md），再在这里选它。已导入过的会自动跳过。' }),
-      hkCard(hkPreview, { onHkChoice, onHkImport, onHkCancel }),
+      // Apple Health 运动记录导入（hkCard / onHkFile…）暂不展示：系统快捷指令读不到体能训练，用户决定先不做。
+      // 要重新打开：把 #set-hk 文件框、"导入 Apple Health 运动记录"按钮和 hkCard(hkPreview, …) 加回这里即可。
+      null,
       importPreview
         ? el('section', { class: 'card import-card' }, [
             el('div', { class: 'row-label', text: `文件：${importPreview.name}` }),
