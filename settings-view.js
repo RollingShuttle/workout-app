@@ -1,5 +1,51 @@
 // settings-view.js — 设置页（spec 3.6）。只画 DOM，所有改动通过回调交给 app.js。
 import { el, replaceChildren } from './dom.js';
+import { KIND_LABELS } from './hk-import.js';
+
+function fmtStart(ms) {
+  const d = new Date(ms);
+  const two = (n) => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}月${d.getDate()}日 ${two(d.getHours())}:${two(d.getMinutes())}`;
+}
+
+// Apple Health 导入的预览卡：每条可改"记为"，确认后才入库
+function hkCard(hkPreview, { onHkChoice, onHkImport, onHkCancel }) {
+  if (!hkPreview) return null;
+  if (hkPreview.done != null) {
+    return el('section', { class: 'card import-card' }, [
+      el('div', { class: 'row-label', text: `文件：${hkPreview.name}` }),
+      el('p', { text: `已导入 ${hkPreview.done} 条，首页和历史里能看到。` }),
+      btn('关闭', onHkCancel),
+    ]);
+  }
+  const items = hkPreview.items || [];
+  const n = items.filter((it) => it.choice !== 'skip').length;
+  return el('section', { class: 'card import-card' }, [
+    el('div', { class: 'row-label', text: `文件：${hkPreview.name}` }),
+    hkPreview.error ? el('p', { class: 'problem', text: hkPreview.error }) : el('p', { text: `${items.length} 条体能训练，将导入 ${n} 条。每条可以改"记为"。` }),
+    items.length
+      ? el(
+          'ul',
+          { class: 'hk-list', role: 'list' },
+          items.map((it, i) =>
+            el('li', { class: 'hk-row' }, [
+              el('div', { class: 'hk-main' }, [
+                el('div', { class: 'hk-title', text: `${fmtStart(it.start)} · ${it.type} · ${it.minutes} 分钟${it.avgHr != null ? ` · 心率 ${it.avgHr}` : ''}` }),
+                it.note ? el('div', { class: 'muted hk-note', text: it.note }) : null,
+              ]),
+              el(
+                'select',
+                { class: 'sheet-select hk-select', 'aria-label': `${it.type} 记为`, onchange: (e) => onHkChoice(i, e.target.value) },
+                Object.keys(KIND_LABELS).map((k) => el('option', { value: k, selected: it.choice === k }, KIND_LABELS[k]))
+              ),
+            ])
+          )
+        )
+      : null,
+    !hkPreview.error ? btn(n ? `导入 ${n} 条` : '没有要导入的', onHkImport, 'btn-primary') : null,
+    btn('取消', onHkCancel),
+  ]);
+}
 
 function header(title, sub, onBack) {
   return el('header', { class: 'train-header' }, [
@@ -31,7 +77,7 @@ function toggleRow(id, label, checked, onChange, { disabled = false, note } = {}
   ]);
 }
 
-export function renderSettings(root, { settings, version, info, isTest, importPreview, saveError, onChange, onExport, onImportFile, onImportApply, onImportCancel, onReloadBuiltin, onClearAll, onBack }) {
+export function renderSettings(root, { settings, version, info, isTest, importPreview, hkPreview, saveError, onChange, onExport, onImportFile, onImportApply, onImportCancel, onHkFile, onHkChoice, onHkImport, onHkCancel, onReloadBuiltin, onClearAll, onBack }) {
   const unitBtn = (u) =>
     el('button', { class: `seg-btn${settings.unit === u ? ' seg-btn-on' : ''}`, type: 'button', 'aria-pressed': settings.unit === u ? 'true' : 'false', onclick: () => onChange({ unit: u }) }, u);
   const persistedText = info.persisted === true ? '已获持久存储' : info.persisted === false ? '未获持久存储（系统空间紧张时可能被清）' : '持久存储：此浏览器不支持';
@@ -96,7 +142,22 @@ export function renderSettings(root, { settings, version, info, isTest, importPr
           },
         }),
         btn('导入 JSON 备份', () => root.querySelector('#set-import').click()),
+        el('input', {
+          type: 'file',
+          accept: '.txt,.json,text/plain,application/json',
+          class: 'settings-file',
+          id: 'set-hk',
+          'aria-label': '选择快捷指令导出的运动记录文件',
+          onchange: (e) => {
+            const f = e.target.files && e.target.files[0];
+            if (f) onHkFile(f);
+            e.target.value = '';
+          },
+        }),
+        btn('导入 Apple Health 运动记录', () => root.querySelector('#set-hk').click()),
       ]),
+      el('p', { class: 'muted settings-note', text: 'Apple Health 的打球 / 二区 / 散步：先在手机上用快捷指令导出"运动记录.txt"（搭建步骤见仓库 docs/shortcut-apple-health.md），再在这里选它。已导入过的会自动跳过。' }),
+      hkCard(hkPreview, { onHkChoice, onHkImport, onHkCancel }),
       importPreview
         ? el('section', { class: 'card import-card' }, [
             el('div', { class: 'row-label', text: `文件：${importPreview.name}` }),

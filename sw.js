@@ -4,7 +4,7 @@
 //   - 其他同源 GET：先用缓存响应，同时后台取新版本更新缓存（stale-while-revalidate），
 //     这样离线能打开，联网时下一次打开自动拿到新代码。
 // 缓存 key 一律去掉 query / hash，避免 ?date= 之类的测试参数污染缓存。
-const CACHE = 'workout-shell-v27';
+const CACHE = 'workout-shell-v28';
 const SHELL = [
   './',
   './index.html',
@@ -28,6 +28,7 @@ const SHELL = [
   './device.js',
   './backup.js',
   './settings-view.js',
+  './hk-import.js',
   './training-plan.json',
   './manifest.webmanifest',
   './icons/icon-180.png',

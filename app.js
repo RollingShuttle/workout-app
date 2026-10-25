@@ -59,8 +59,9 @@ import { setDisplayUnit } from './units.js';
 import { setWakeLock, wakeLockSupported, unlockAudio, beep, audioSupported } from './device.js';
 import { buildBackup, backupFileName, parseBackup, normalizeBackupMeta, backupReminder, finishedTrainingCount, BACKUP_REMIND_DAYS, BACKUP_SNOOZE_DAYS } from './backup.js';
 import { renderSettings } from './settings-view.js';
+import { parseWorkoutsFile, guessKind, conflictWith, sessionFromItem } from './hk-import.js';
 
-const APP_VERSION = '0.15.1';
+const APP_VERSION = '0.16.0';
 const BACKUP_META_KEY = 'backup';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
@@ -92,6 +93,7 @@ const state = {
   persisted: null, // navigator.storage.persisted() 的结果，设置页显示
   backupMeta: normalizeBackupMeta(null), // 上次备份的训练数和时间（settings 表 key=backup）
   finishSheet: null, // 结束训练的汇总表单打开时：{ session, template, title, totalSets, minutes, rows }
+  hkPreview: null, // Apple Health 导入的预览 { name, items: [{ ...item, choice, note }] } | { name, error } | { name, done: n }
 };
 
 function setStatus(text) {
@@ -1119,6 +1121,59 @@ function backupStatusText() {
   return `${base}。超过 ${BACKUP_REMIND_DAYS} 天没备份且有新训练时首页会提醒${r.snoozed ? '（已推迟）' : ''}`;
 }
 
+/* ---------- Apple Health 运动记录导入（快捷指令导出的文件） ---------- */
+
+function previewHkImport(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const parsed = parseWorkoutsFile(String(reader.result));
+    if (!parsed.ok) {
+      state.hkPreview = { name: file.name, error: parsed.error };
+    } else {
+      // 每条先猜"记为"，再和已有记录比：导入过的、当天已手动记过同类的默认跳过
+      const items = parsed.items.map((item) => {
+        const kind = guessKind(item);
+        if (kind === 'skip') return { ...item, choice: 'skip', note: '不认识的类型，默认跳过' };
+        const conflict = conflictWith(item, kind, state.history);
+        if (conflict === 'exists') return { ...item, choice: 'skip', note: '已导入过' };
+        if (conflict === 'same-day') return { ...item, choice: 'skip', note: '当天已有同类记录，默认跳过' };
+        return { ...item, choice: kind, note: null };
+      });
+      state.hkPreview = { name: file.name, items };
+    }
+    render();
+  };
+  reader.onerror = () => {
+    state.hkPreview = { name: file.name, error: '读文件失败' };
+    render();
+  };
+  reader.readAsText(file);
+}
+
+function setHkChoice(index, choice) {
+  const p = state.hkPreview;
+  if (!p || !p.items || !p.items[index]) return;
+  p.items[index] = { ...p.items[index], choice };
+  render();
+}
+
+async function applyHkImport() {
+  const p = state.hkPreview;
+  if (!p || !p.items) return;
+  const sessions = p.items.filter((it) => it.choice !== 'skip').map((it) => sessionFromItem(it, it.choice));
+  if (!sessions.length) return;
+  if (state.isTest) sessions.forEach((s) => { s.test = true; });
+  try {
+    await putSessions(sessions);
+    state.history = [...sessions, ...state.history].sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+    state.saveError = null;
+    state.hkPreview = { name: p.name, done: sessions.length };
+  } catch (err) {
+    state.saveError = `导入失败：${err.message}`;
+  }
+  render();
+}
+
 function renderSettingsView(root) {
   ensureHistory();
   renderSettings(root, {
@@ -1133,6 +1188,7 @@ function renderSettingsView(root) {
       audioSupported: audioSupported(),
     },
     importPreview: state.importPreview,
+    hkPreview: state.hkPreview,
     saveError: state.saveError,
     onChange: applySettings,
     onExport: exportBackup,
@@ -1140,6 +1196,13 @@ function renderSettingsView(root) {
     onImportApply: applyImport,
     onImportCancel: () => {
       state.importPreview = null;
+      render();
+    },
+    onHkFile: previewHkImport,
+    onHkChoice: setHkChoice,
+    onHkImport: applyHkImport,
+    onHkCancel: () => {
+      state.hkPreview = null;
       render();
     },
     onReloadBuiltin: reloadBuiltinPlan,
@@ -1222,7 +1285,10 @@ function renderView() {
   state.picker = null; // 选单开着时离开训练页，别让它下次再弹出来
   if (view !== 'home') state.activitySheet = null;
   if (view !== 'plan' && view !== 'planDay') state.planSheet = null;
-  if (view !== 'settings') state.importPreview = null;
+  if (view !== 'settings') {
+    state.importPreview = null;
+    state.hkPreview = null;
+  }
   if (view === 'home') renderHome(root, day);
   else if (view === 'plan' || view === 'planDay') renderPlanView(root, view);
   else if (view === 'settings') renderSettingsView(root);
