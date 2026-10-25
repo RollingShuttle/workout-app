@@ -57,7 +57,7 @@ import { setWakeLock, wakeLockSupported, unlockAudio, beep, audioSupported } fro
 import { buildBackup, backupFileName, parseBackup, normalizeBackupMeta, backupReminder, finishedTrainingCount, BACKUP_REMIND_DAYS, BACKUP_SNOOZE_DAYS } from './backup.js';
 import { renderSettings } from './settings-view.js';
 
-const APP_VERSION = '0.14.1';
+const APP_VERSION = '0.14.2';
 const BACKUP_META_KEY = 'backup';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
@@ -401,6 +401,7 @@ function renderHome(root, day) {
       : null,
     day.kind !== 'strength' ? el('div', { class: 'home-actions home-actions-row' }, activityButtons(day)) : null,
     renderWeekStrip({ summary, todayKey, ballCount, limit: BALL_WEEKLY_LIMIT }),
+    renderRules(plan.rules),
     el('div', { class: 'home-links' }, [
       el('a', { class: 'btn-secondary link-btn', href: '#history' }, '历史记录'),
       el('a', { class: 'btn-secondary link-btn', href: '#plan' }, '计划'),
@@ -451,6 +452,16 @@ function dismissBackupReminder() {
 function markBackedUp(sessions, now) {
   saveBackupMeta({ lastCount: finishedTrainingCount(sessions), lastAt: now, snoozedUntil: null });
   render();
+}
+
+// 规则提示（spec 3.1 底部）：计划里的 rules[] 折叠显示，默认收起；没有规则就不画
+function renderRules(rules) {
+  const list = (rules || []).filter((r) => typeof r === 'string' && r.trim());
+  if (!list.length) return null;
+  return el('details', { class: 'rules' }, [
+    el('summary', { class: 'rules-summary', text: `排程规则（${list.length} 条）` }),
+    el('ul', { class: 'rules-list' }, list.map((r) => el('li', { text: r }))),
+  ]);
 }
 
 /* ---------- 训练模式 ---------- */
