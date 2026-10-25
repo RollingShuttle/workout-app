@@ -15,23 +15,25 @@ App 导入时：Badminton / 羽毛球默认记为打球；Cycling、Elliptical�
 
 ## 搭建步骤（英文系统，iOS 17 / 18）
 
-1. Open **Shortcuts**, tap **+** to create a new shortcut, name it "Export Workouts".
-2. Add **Find Workouts** (Health).
-   - Add a filter: **Start Date** · **is in the last** · **30 days** (bigger if you want more history).
-   - Sort by **Start Date**, Order **Latest First**. Leave Limit off.
-3. Add **Repeat with Each**, input = **Workouts** (the result of step 2). Steps 4–8 go inside this Repeat block.
-4. Add **Get Details of Workouts**: input **Repeat Item**, Detail **Start Date**. Then add **Format Date**: Date Format **ISO 8601**, turn on **Include ISO 8601 Time**. Add **Set Variable** → name it `start`.
-5. Same again for **End Date** → Format Date (ISO 8601 + time) → Set Variable `end`.
-6. Add **Get Details of Workouts**: Detail **Workout Type** → Set Variable `type`.
-7. Average heart rate: add **Find Health Samples**, Type **Heart Rate**, two filters: **Start Date is after** `start`, **Start Date is before** `end`. Then add **Calculate Statistics**: Operation **Average**, input = the health samples. Set Variable `hr`. (Slowest step. If it errors or you don't need heart rate, delete this whole step and leave the field empty.)
-8. Add **Text** with one line: `type|start|end|hr` — insert the four variables (tap the variable names above the keyboard). Then **Add to Variable** `lines`.
-9. After the Repeat block ends, add **Combine Text**: input `lines`, Separator **New Lines**.
-10. Add **Save File**: Service **iCloud Drive**, turn off **Ask Where to Save**, Destination Path `/Shortcuts/workouts.txt`, turn on **Overwrite If File Exists**.
-11. Run it once. It will ask for Health permissions several times — allow all. Afterwards the file is in **Files → iCloud Drive → Shortcuts → workouts.txt**.
+快捷指令里没有叫 "Find Workouts" 的动作。读体能训练用的是 **Find Health Samples**，把 Type 选成 **Workouts**。搜动作时搜 "Health Samples"，不要搜 "Workout"。
+
+1. Open **Shortcuts**, tap **+**, name it "Export Workouts".
+2. Add **Find Health Samples**. Tap **Type** and pick **Workouts** (scroll the list; it is not under Heart). Add a filter: **Start Date** · **is in the last** · **30 days**. Sort by **Start Date**, Order **Latest First**. Leave Limit off.
+3. Add **Repeat with Each**, input = **Health Samples** (the result of step 2). Steps 4–8 go inside the Repeat block.
+4. Add **Get Details of Health Samples**: input **Repeat Item**, Detail **Start Date**. Then add **Format Date**: Date Format **ISO 8601**, turn on **Include ISO 8601 Time**. Add **Set Variable** → `start`.
+5. Same again with Detail **End Date** → Format Date (ISO 8601 + time) → Set Variable `end`.
+6. Add **Get Details of Health Samples**: Detail **Workout Type** (on some versions it is called **Activity Type**; pick whichever is there) → Set Variable `type`.
+7. Average heart rate (optional, slowest step): add **Find Health Samples**, Type **Heart Rate**, two filters: **Start Date is after** `start`, **Start Date is before** `end`. Then **Calculate Statistics**: Operation **Average**, input = those samples. Set Variable `hr`. Delete this whole step if it errors; the App lets you leave heart rate empty.
+8. Add **Text** with one line: `type|start|end|hr` (insert the four variables from the bar above the keyboard). Then **Add to Variable** `lines`.
+9. After the Repeat block: **Combine Text**, input `lines`, Separator **New Lines**.
+10. **Save File**: Service **iCloud Drive**, **Ask Where to Save** off, Destination Path `/Shortcuts/workouts.txt`, **Overwrite If File Exists** on.
+11. Run it once and allow every Health permission prompt. The file lands in **Files → iCloud Drive → Shortcuts → workouts.txt**.
+
+如果第 2 步的 Type 列表里真的没有 Workouts（老系统可能没有），系统自带的快捷指令就拿不到体能训练，只能用第三方 App（App Store 搜 "Health Exporter & Shortcuts" 或 "Health Auto Export"，都是付费的）导出 JSON，再告诉我它的字段名，我把导入改成也认那种格式。
 
 ## 搭建步骤（中文系统）
 
-动作名对照：Find Workouts = 查找体能训练，Repeat with Each = 重复每个项目，Get Details of Workouts = 获取体能训练的详细信息，Format Date = 格式化日期，Set Variable = 设定变量，Find Health Samples = 查找健康样本，Calculate Statistics = 计算统计，Text = 文本，Add to Variable = 添加到变量，Combine Text = 合并文本，Save File = 存储文件。其余步骤完全一样。
+动作名对照：Find Health Samples = 查找健康样本（Type 选"体能训练"），Repeat with Each = 重复每个项目，Get Details of Health Samples = 获取健康样本的详细信息，Format Date = 格式化日期，Set Variable = 设定变量，Calculate Statistics = 计算统计，Text = 文本，Add to Variable = 添加到变量，Combine Text = 合并文本，Save File = 存储文件。其余步骤完全一样。
 
 ## 导入
 
@@ -39,7 +41,7 @@ App 首页底部 → 设置 → 数据 → **导入 Apple Health 运动记录** 
 
 ## 常见问题
 
-- 找不到 Find Workouts：在动作搜索框搜 "workout"。
+- 搜 "Workout" 只出来 Start / End / Log Workout：那些是记录和控制手表的，不是读取。要搜 "Health Samples"。
 - 心率为空或报错：那次训练没戴表、没有心率样本，导入时心率留空即可。
 - 导入提示"时间读不出来"：第 4、5 步的 Format Date 没选 ISO 8601，或没打开 Include ISO 8601 Time。
 - 类型猜错或落到"跳过"：在预览的下拉里手动改。英文系统给的类型名是 Badminton、Walking、Outdoor Walk、Cycling、Elliptical 这类，App 都认。
