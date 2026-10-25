@@ -29,10 +29,13 @@ import {
   sessionHasInput,
   activeDurationMs,
   syncEntries,
+  effectiveExercise,
+  targetSets,
+  bestSetOf,
 } from './workout.js';
-import { renderTrain, renderTrainUnavailable, renderAlternateSheet, updateRestClock, updateLastRef, restClockState } from './train-view.js';
+import { renderTrain, renderTrainUnavailable, renderAlternateSheet, renderFinishSheet, updateRestClock, updateLastRef, restClockState } from './train-view.js';
 import { putSession, deleteSession, findDraft, listSessions, requestPersistentStorage, putSessions, clearSessions, clearSettings, isPersisted, getSetting, putSetting } from './db.js';
-import { lastSetsFor, prefillFor } from './history.js';
+import { lastSetsFor, prefillFor, formatSets } from './history.js';
 import { renderHistoryList, renderSessionDetail, renderExerciseChart } from './history-view.js';
 import { suggestionFor } from './progression.js';
 import { createActivitySession, weekSummary, ballCountThisWeek, BALL_WEEKLY_LIMIT, activitiesOn, findCardio } from './activity.js';
@@ -57,7 +60,7 @@ import { setWakeLock, wakeLockSupported, unlockAudio, beep, audioSupported } fro
 import { buildBackup, backupFileName, parseBackup, normalizeBackupMeta, backupReminder, finishedTrainingCount, BACKUP_REMIND_DAYS, BACKUP_SNOOZE_DAYS } from './backup.js';
 import { renderSettings } from './settings-view.js';
 
-const APP_VERSION = '0.14.4';
+const APP_VERSION = '0.15.0';
 const BACKUP_META_KEY = 'backup';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
@@ -88,6 +91,7 @@ const state = {
   importPreview: null, // 设置页选了备份文件后的预览 { name, data, summary } 或 { name, error }
   persisted: null, // navigator.storage.persisted() 的结果，设置页显示
   backupMeta: normalizeBackupMeta(null), // 上次备份的训练数和时间（settings 表 key=backup）
+  finishSheet: null, // 结束训练的汇总表单打开时：{ session, template, title, totalSets, minutes, rows }
 };
 
 function setStatus(text) {
@@ -533,37 +537,71 @@ async function deleteRecord(session) {
   location.hash = '#history';
 }
 
-// 结束训练：有记录 → 确认后填 finishedAt 并等写入成功再回首页；没记录 → 确认后丢弃。
-// template 可能为 null（草稿的模板已从计划里删掉），此时只按记录条数汇总。
+// 离开训练：清掉进行中的状态，回首页；历史重读（刚结束的这次要算进"上次"）
+function leaveTraining() {
+  state.session = null;
+  state.inputs = null;
+  state.historyLoaded = false;
+  state.historyReady = false;
+  state.historyError = null;
+  location.hash = '';
+  render(); // 本来就在首页时 hash 没变，不会触发 hashchange，手动画一次
+}
+
+// 结束汇总里每个动作一行：名字（替代动作就是替代名）、状态、组数、最佳组
+function finishRows(session, template) {
+  return session.entries.map((entry) => {
+    const base = template ? findExercise(template, entry.exerciseId) : null;
+    const ex = base ? effectiveExercise(entry, base) : null;
+    const name = ex ? ex.name : entry.usedAlternate || entry.exerciseId;
+    const load = ex ? ex.load || {} : {};
+    const n = entry.sets.length;
+    const best = n ? bestSetOf(entry.sets, load) : null;
+    const bestText = best ? formatSets([best], { bodyweight: Boolean(load.bodyweight) }) : '';
+    if (entry.status === 'skipped') return { name, status: 'skipped', text: '跳过' };
+    if (!n) return { name, status: 'none', text: '未做' };
+    if (entry.status === 'done') return { name, status: 'done', text: `完成 · ${n} 组 · 最佳 ${bestText}` };
+    return { name, status: 'partial', text: `未做完 · ${n}${base ? `/${targetSets(base, entry)}` : ''} 组 · 最佳 ${bestText}` };
+  });
+}
+
+// 结束训练：有记录 → 弹汇总（总组数、用时、每个动作的最佳组），确认后填 finishedAt 并等写入成功再回首页；
+// 没记录 → 确认后丢弃。template 可能为 null（草稿的模板已从计划里删掉），此时只按记录条数汇总。
 async function finishTraining(session, template) {
   if (!session) return;
-  const now = Date.now();
-  const leave = () => {
-    state.session = null;
-    state.inputs = null;
-    state.historyLoaded = false; // 刚结束的这次要算进"上次"
-    state.historyReady = false;
-    state.historyError = null;
-    location.hash = '';
-    render(); // 本来就在首页时 hash 没变，不会触发 hashchange，手动画一次
-  };
   if (!sessionHasSets(session)) {
     if (!window.confirm('还没有记录任何一组，直接退出训练？')) return;
     await persistSession(session);
-    leave();
+    leaveTraining();
     return;
   }
   // 隔天才来结束的草稿：按最后一组的时间算结束，用时才不会算成一整天（规则在 workout.js）
-  const finishedAt = finishedAtFor(session, now);
-  const totalSets = countSets(session, template);
-  const minutes = Math.max(1, Math.round(activeDurationMs(session, finishedAt) / 60000));
-  if (!window.confirm(`结束训练？共 ${totalSets} 组，用时 ${minutes} 分钟。`)) return;
+  const finishedAt = finishedAtFor(session, Date.now());
+  state.finishSheet = {
+    session,
+    template,
+    title: template ? template.name : session.templateId,
+    totalSets: countSets(session, template),
+    minutes: Math.max(1, Math.round(activeDurationMs(session, finishedAt) / 60000)),
+    rows: finishRows(session, template),
+  };
+  render();
+}
+
+// 汇总里点"保存并结束"
+async function confirmFinish() {
+  const f = state.finishSheet;
+  if (!f) return;
+  state.finishSheet = null;
+  const { session, template } = f;
+  const finishedAt = finishedAtFor(session, Date.now());
   const ok = await persistSession(finishSession(session, template, finishedAt));
   if (!ok) {
     window.alert(`${state.saveError || '保存失败'}。这次训练还没保存成功，请再试一次。`);
+    render();
     return;
   }
-  leave();
+  leaveTraining();
   // 模板自带"力量之后"的有氧（上肢B + 二区）：回到首页顺手弹出有氧记录表单，没做就取消
   if (template && template.cardio) {
     openActivitySheet('cardio', template.cardio.id, { title: `力量之后 · ${template.cardio.name}`, dateKey: session.date });
@@ -1147,6 +1185,22 @@ function renderFirstRun(root) {
 
 function render() {
   renderView();
+  // 结束训练的汇总：只在训练页和首页（草稿卡的"结束并保存"）上盖着；去了别的页就收掉
+  if (state.finishSheet) {
+    const view = currentView();
+    if ((view === 'train' || view === 'home') && !state.firstRun) {
+      renderFinishSheet(document.getElementById('app'), {
+        ...state.finishSheet,
+        onConfirm: confirmFinish,
+        onClose: () => {
+          state.finishSheet = null;
+          render();
+        },
+      });
+    } else {
+      state.finishSheet = null;
+    }
+  }
   syncWakeLock();
 }
 

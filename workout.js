@@ -49,6 +49,26 @@ export function completedSets(entry, exercise) {
   return entry.sets.length;
 }
 
+// 最佳组（结束汇总用）：助力动作取助力最小（越小越难），自重取次数最多，其余取重量最大、同重量取次数多。
+// 没记重量的组按最差算；没有组返回 null。
+export function bestSetOf(sets, load = {}) {
+  const reps = (s) => (s.reps == null ? -1 : s.reps);
+  const weight = (s) => (s.weight == null ? (load.assisted ? Infinity : -Infinity) : s.weight);
+  let best = null;
+  for (const s of sets || []) {
+    if (!best) {
+      best = s;
+      continue;
+    }
+    let better;
+    if (load.bodyweight) better = reps(s) > reps(best);
+    else if (load.assisted) better = weight(s) < weight(best) || (weight(s) === weight(best) && reps(s) > reps(best));
+    else better = weight(s) > weight(best) || (weight(s) === weight(best) && reps(s) > reps(best));
+    if (better) best = s;
+  }
+  return best;
+}
+
 export function isDone(entry, exercise) {
   return Boolean(entry.endedEarly) || completedSets(entry, exercise) >= targetSets(exercise, entry);
 }

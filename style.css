@@ -937,6 +937,48 @@ input.num:focus {
   margin: 0 0 10px;
 }
 
+/* 结束训练的汇总 */
+.finish-total {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.finish-list {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+}
+
+.finish-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  padding: 6px 0;
+  border-top: 1px solid var(--btn-secondary-border);
+  font-size: 15px;
+}
+
+.finish-name {
+  flex: 0 0 auto;
+  max-width: 45%;
+}
+
+.finish-meta {
+  text-align: right;
+  color: var(--muted);
+}
+
+.finish-skipped .finish-name,
+.finish-none .finish-name {
+  color: var(--muted);
+}
+
+.finish-done .finish-meta {
+  color: var(--fg);
+}
+
 /* 首次启动页 */
 .firstrun {
   padding: 16px;

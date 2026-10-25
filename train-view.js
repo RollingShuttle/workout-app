@@ -350,3 +350,33 @@ export function renderTrainUnavailable(root, { message, onBack, onFinish, onDisc
       : null,
   ]);
 }
+
+// 结束训练的汇总（spec 3.2）：总组数、用时、每个动作的最佳组；确认才保存。
+// rows: [{ name, status: 'done' | 'partial' | 'skipped' | 'none', text }]
+export function renderFinishSheet(root, { title, totalSets, minutes, rows, onConfirm, onClose }) {
+  const onKey = (e) => {
+    if (e.key === 'Escape') close();
+  };
+  const close = () => {
+    document.removeEventListener('keydown', onKey);
+    onClose();
+  };
+  document.addEventListener('keydown', onKey);
+  const sheet = el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': '结束训练', tabindex: '-1' }, [
+    el('div', { class: 'sheet-title', text: '结束训练' }),
+    el('p', { class: 'finish-total', text: `${title} · 共 ${totalSets} 组 · 用时 ${minutes} 分钟` }),
+    el(
+      'ul',
+      { class: 'finish-list', role: 'list' },
+      rows.map((r) =>
+        el('li', { class: `finish-row finish-${r.status}` }, [el('span', { class: 'finish-name', text: r.name }), el('span', { class: 'finish-meta', text: r.text })])
+      )
+    ),
+    el('button', { class: 'btn-primary sheet-save', type: 'button', onclick: () => { document.removeEventListener('keydown', onKey); onConfirm(); } }, '保存并结束'),
+    el('button', { class: 'btn-secondary sheet-cancel', type: 'button', onclick: close }, '继续训练'),
+  ]);
+  root.appendChild(
+    el('div', { class: 'sheet-backdrop', onclick: (e) => { if (e.target === e.currentTarget) close(); } }, [sheet])
+  );
+  sheet.focus();
+}
