@@ -4,7 +4,7 @@ import { WEEKDAY_LABELS, parseDateKey, formatLoad } from './schedule.js';
 import { formatSets } from './history.js';
 import { findExercise, effectiveExercise, activeDurationMs } from './workout.js';
 import { formatWeight, lbToDisplay, displayUnit } from './units.js';
-import { describeActivity } from './activity.js';
+import { describeActivity, findCardio } from './activity.js';
 
 function fmtDate(key) {
   const d = parseDateKey(key);
@@ -31,7 +31,7 @@ function totalSets(session) {
 export function sessionTypeName(session, plan) {
   const t = (plan.dayTemplates || []).find((x) => x.id === session.templateId);
   if (t) return t.name;
-  const c = (plan.cardioTemplates || []).find((x) => x.id === session.cardioId);
+  const c = findCardio(plan, session.cardioId);
   if (c) return c.name;
   return { cardio: '有氧', ball: '打球', rest: '休息' }[session.activityKind] || session.templateId || '训练';
 }

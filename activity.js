@@ -57,8 +57,19 @@ export function activitiesOn(sessions, dateKey) {
 }
 
 // 显示名："羽毛球 60 分钟 · 平均心率 135 · Zone3+ 10 分钟"
+// 有氧模板：先找 cardioTemplates，再找训练日模板里自带的"力量之后"有氧（如上肢B 的 zone2）
+export function findCardio(plan, id) {
+  if (!id) return null;
+  const t = (plan.cardioTemplates || []).find((c) => c.id === id);
+  if (t) return t;
+  for (const day of plan.dayTemplates || []) {
+    if (day.cardio && day.cardio.id === id) return day.cardio;
+  }
+  return null;
+}
+
 export function describeActivity(session, plan) {
-  const t = (plan.cardioTemplates || []).find((c) => c.id === session.cardioId);
+  const t = findCardio(plan, session.cardioId);
   // 模板名里自带的"30 分钟"去掉，按实际填的时长显示
   const name = (t ? t.name : session.activityKind === 'ball' ? '打球' : '有氧').replace(/\s*\d+(?:-\d+)?\s*分钟$/, '');
   const c = session.cardio || {};

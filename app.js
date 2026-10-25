@@ -35,7 +35,7 @@ import { putSession, deleteSession, findDraft, listSessions, requestPersistentSt
 import { lastSetsFor, prefillFor } from './history.js';
 import { renderHistoryList, renderSessionDetail, renderExerciseChart } from './history-view.js';
 import { suggestionFor } from './progression.js';
-import { createActivitySession, weekSummary, ballCountThisWeek, BALL_WEEKLY_LIMIT, activitiesOn } from './activity.js';
+import { createActivitySession, weekSummary, ballCountThisWeek, BALL_WEEKLY_LIMIT, activitiesOn, findCardio } from './activity.js';
 import { renderActivitySheet, renderWeekStrip, renderTodayActivities } from './activity-view.js';
 import { loadStoredPlan, savePlan, blankPlanFrom } from './plan-store.js';
 import {
@@ -57,7 +57,7 @@ import { setWakeLock, wakeLockSupported, unlockAudio, beep, audioSupported } fro
 import { buildBackup, backupFileName, parseBackup, normalizeBackupMeta, backupReminder, finishedTrainingCount, BACKUP_REMIND_DAYS, BACKUP_SNOOZE_DAYS } from './backup.js';
 import { renderSettings } from './settings-view.js';
 
-const APP_VERSION = '0.14.2';
+const APP_VERSION = '0.14.3';
 const BACKUP_META_KEY = 'backup';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
@@ -310,23 +310,24 @@ function countSets(session, template) {
 }
 
 function cardioTemplate(id) {
-  return (state.plan.cardioTemplates || []).find((c) => c.id === id) || null;
+  return findCardio(state.plan, id);
 }
 
-function openActivitySheet(kind, cardioId) {
+// extra：{ title?, dateKey? }——力量之后接的有氧用训练那天的日期、带"力量之后"标题
+function openActivitySheet(kind, cardioId, extra = {}) {
   const t = cardioTemplate(cardioId);
-  const title = kind === 'ball' ? '今天打球' : kind === 'walk' ? '记一条散步' : `记录有氧 · ${t ? t.name : '二区'}`;
+  const title = extra.title || (kind === 'ball' ? '今天打球' : kind === 'walk' ? '记一条散步' : `记录有氧 · ${t ? t.name : '二区'}`);
   const defaultMinutes = t && typeof t.durationMin === 'number' ? t.durationMin : t && t.durationMin ? t.durationMin.max : kind === 'ball' ? 60 : 30;
   const count = ballCountThisWeek(state.history, state.date);
   const warning = kind === 'ball' && count >= BALL_WEEKLY_LIMIT ? `本周已打 ${count} 次球，规则是最多 ${BALL_WEEKLY_LIMIT} 次（仍可记录）` : null;
-  state.activitySheet = { kind, cardioId, title, defaultMinutes, warning };
+  state.activitySheet = { kind, cardioId, title, defaultMinutes, warning, dateKey: extra.dateKey || null };
   render();
 }
 
 async function saveActivity(values) {
   const sheet = state.activitySheet;
   if (!sheet) return;
-  const session = createActivitySession({ kind: sheet.kind, cardioId: sheet.cardioId, dateKey: toDateKey(state.date), now: Date.now(), ...values });
+  const session = createActivitySession({ kind: sheet.kind, cardioId: sheet.cardioId, dateKey: sheet.dateKey || toDateKey(state.date), now: Date.now(), ...values });
   if (state.isTest) session.test = true;
   state.activitySheet = null;
   try {
@@ -337,6 +338,20 @@ async function saveActivity(values) {
     state.saveError = `保存失败：${err.message}`;
   }
   render();
+}
+
+// 力量日模板自带"力量之后"的有氧（上肢B + 二区）：今天这个训练做完了、有氧还没记 → 给个补记按钮
+// （结束训练时会自动弹表单；这里是取消了之后再记的入口）
+function postStrengthCardioButton(day, todayKey) {
+  if (day.kind !== 'strength' || !day.day.cardio) return null;
+  const cardio = day.day.cardio;
+  const finishedToday = state.history.some((s) => s.finishedAt && s.templateId === day.day.id && s.date === todayKey);
+  if (!finishedToday) return null;
+  const recorded = activitiesOn(state.history, todayKey).some((s) => s.cardioId === cardio.id);
+  if (recorded) return null;
+  return el('div', { class: 'home-actions home-actions-row' }, [
+    el('button', { class: 'btn-secondary link-btn', type: 'button', onclick: () => openActivitySheet('cardio', cardio.id, { title: `力量之后 · ${cardio.name}` }) }, `记录${cardio.name}（力量之后）`),
+  ]);
 }
 
 // 首页按今天的安排给出记录按钮：打球日两个、有氧日一个、休息日散步（可打球的休息日再加打球）
@@ -400,6 +415,7 @@ function renderHome(root, day) {
         ])
       : null,
     day.kind !== 'strength' ? el('div', { class: 'home-actions home-actions-row' }, activityButtons(day)) : null,
+    state.historyReady ? postStrengthCardioButton(day, todayKey) : null,
     renderWeekStrip({ summary, todayKey, ballCount, limit: BALL_WEEKLY_LIMIT }),
     renderRules(plan.rules),
     el('div', { class: 'home-links' }, [
@@ -510,6 +526,10 @@ async function finishTraining(session, template) {
     return;
   }
   leave();
+  // 模板自带"力量之后"的有氧（上肢B + 二区）：回到首页顺手弹出有氧记录表单，没做就取消
+  if (template && template.cardio) {
+    openActivitySheet('cardio', template.cardio.id, { title: `力量之后 · ${template.cardio.name}`, dateKey: session.date });
+  }
 }
 
 function renderTrainView(root, day) {
