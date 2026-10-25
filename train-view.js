@@ -300,7 +300,7 @@ export function updateRestClock(root, session, template, now, defaultRest = 90) 
   }
 }
 
-export function renderTrain(root, { session, template, dateText, now, notice, prefill, last, suggest, inputs, historyLoaded, defaultRestSeconds = 90, onSelect, onCompleteSet, onUndo, onExtra, onEnd, onSkip, onUnskip, onPickAlternate, onInput, onBack, onFinish, onReset }) {
+export function renderTrain(root, { session, template, dateText, now, notice, prefill, last, suggest, inputs, historyLoaded, defaultRestSeconds = 90, onSelect, onCompleteSet, onUndo, onExtra, onEnd, onSkip, onUnskip, onPickAlternate, onInput, onBack, onFinish, onDiscard, onReset }) {
   const sum = summarize(session, template);
   const handlers = { onSelect, onCompleteSet, onUndo, onExtra, onEnd, onSkip, onUnskip, onPickAlternate, onInput };
   const ctx = { prefill, last, suggest, inputs, historyLoaded, sessionId: session.id };
@@ -326,12 +326,14 @@ export function renderTrain(root, { session, template, dateText, now, notice, pr
     ),
     el('div', { class: 'train-footer' }, [
       el('button', { class: 'btn-secondary btn-finish', type: 'button', onclick: onFinish }, '结束训练'),
+      // 试玩 / 测试时用：不保存，直接删掉这次的草稿
+      onDiscard ? el('button', { class: 'btn-secondary btn-discard', type: 'button', onclick: onDiscard }, '放弃这次训练（不保存）') : null,
     ]),
   ]);
 }
 
 // 进不了训练页时的提示：今天不是力量日，或草稿的模板找不到了（此时给一个结束入口，别把人卡死）
-export function renderTrainUnavailable(root, { message, onBack, onFinish }) {
+export function renderTrainUnavailable(root, { message, onBack, onFinish, onDiscard }) {
   replaceChildren(root, [
     el('header', { class: 'train-header' }, [
       el('div', { class: 'train-topline' }, [
@@ -340,9 +342,10 @@ export function renderTrainUnavailable(root, { message, onBack, onFinish }) {
       ]),
     ]),
     el('p', { class: 'muted', text: message }),
-    onFinish
+    onFinish || onDiscard
       ? el('div', { class: 'train-footer' }, [
-          el('button', { class: 'btn-secondary btn-finish', type: 'button', onclick: onFinish }, '结束并保存这次训练'),
+          onFinish ? el('button', { class: 'btn-secondary btn-finish', type: 'button', onclick: onFinish }, '结束并保存这次训练') : null,
+          onDiscard ? el('button', { class: 'btn-secondary btn-discard', type: 'button', onclick: onDiscard }, '放弃这次训练（不保存）') : null,
         ])
       : null,
   ]);

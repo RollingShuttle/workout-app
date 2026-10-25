@@ -57,7 +57,7 @@ import { setWakeLock, wakeLockSupported, unlockAudio, beep, audioSupported } fro
 import { buildBackup, backupFileName, parseBackup, normalizeBackupMeta, backupReminder, finishedTrainingCount, BACKUP_REMIND_DAYS, BACKUP_SNOOZE_DAYS } from './backup.js';
 import { renderSettings } from './settings-view.js';
 
-const APP_VERSION = '0.14.3';
+const APP_VERSION = '0.14.4';
 const BACKUP_META_KEY = 'backup';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
@@ -300,6 +300,7 @@ function renderDraftCard(draft) {
     el('div', { class: 'ex-notes', text: '先接着练完或结束它，再开始今天的训练' }),
     el('button', { class: 'btn-primary', type: 'button', onclick: () => { location.hash = '#train'; } }, '继续训练'),
     el('button', { class: 'btn-secondary', type: 'button', onclick: () => finishTraining(draft, template) }, '结束并保存'),
+    el('button', { class: 'btn-secondary btn-discard', type: 'button', onclick: () => discardTraining(draft) }, '放弃不保存'),
   ]);
 }
 
@@ -495,6 +496,43 @@ function goHome() {
   location.hash = '';
 }
 
+// 放弃这次训练：不保存，直接删掉草稿（试玩 / 测试功能时用）。没记过东西的 session 本来就没写库，删一下也无妨。
+async function discardTraining(session) {
+  if (!session) return;
+  const n = session.entries.reduce((sum, e) => sum + e.sets.length, 0);
+  if (!window.confirm(n ? `放弃这次训练？已记的 ${n} 组不会保存。` : '放弃这次训练？')) return;
+  try {
+    await deleteSession(session.id);
+    state.saveError = null;
+  } catch (err) {
+    state.saveError = `删除失败：${err.message}`;
+    render();
+    return;
+  }
+  if (state.session && state.session.id === session.id) {
+    state.session = null;
+    state.inputs = null;
+  }
+  location.hash = '';
+  render(); // 本来就在首页（草稿卡）时 hash 没变，手动画一次
+}
+
+// 删除一条已保存的记录（历史详情里）：训练或打球 / 有氧 / 散步都可以
+async function deleteRecord(session) {
+  if (!window.confirm('删除这条记录？不可恢复。')) return;
+  try {
+    await deleteSession(session.id);
+    state.saveError = null;
+  } catch (err) {
+    state.saveError = `删除失败：${err.message}`;
+    render();
+    return;
+  }
+  state.history = state.history.filter((s) => s.id !== session.id);
+  if (state.session && state.session.id === session.id) state.session = null;
+  location.hash = '#history';
+}
+
 // 结束训练：有记录 → 确认后填 finishedAt 并等写入成功再回首页；没记录 → 确认后丢弃。
 // template 可能为 null（草稿的模板已从计划里删掉），此时只按记录条数汇总。
 async function finishTraining(session, template) {
@@ -547,6 +585,7 @@ function renderTrainView(root, day) {
         message: `这条未完成的训练用的模板「${current.templateId}」已经不在计划里，没法继续，可以直接结束保存。`,
         onBack: back,
         onFinish: () => finishTraining(current, null),
+        onDiscard: () => discardTraining(current),
       });
       return;
     }
@@ -628,6 +667,7 @@ function renderTrainView(root, day) {
     onUnskip: (id) => update(unskipExercise(state.session, template, id)),
     onPickAlternate: (id) => { state.picker = id; render(); },
     onFinish: () => finishTraining(state.session, template),
+    onDiscard: () => discardTraining(state.session),
     onReset: () => update(resetRest(state.session, Date.now())),
   });
   if (state.picker) {
@@ -743,6 +783,7 @@ function renderHistoryView(root, view) {
       plan: state.plan,
       onOpenExercise: (exerciseId) => { location.hash = `#exercise/${encodeURIComponent(exerciseId)}`; },
       onBack: () => { location.hash = '#history'; },
+      onDelete: () => deleteRecord(session),
     });
     return;
   }

@@ -79,7 +79,10 @@ export function renderHistoryList(root, { sessions, plan, loading, error, onRetr
 
 /* ---------- 单次训练详情 ---------- */
 
-export function renderSessionDetail(root, { session, plan, onOpenExercise, onBack }) {
+export function renderSessionDetail(root, { session, plan, onOpenExercise, onBack, onDelete }) {
+  const deleteBtn = onDelete
+    ? el('div', { class: 'train-footer' }, [el('button', { class: 'btn-secondary btn-finish hist-delete', type: 'button', onclick: onDelete }, '删除这条记录')])
+    : null;
   const template = (plan.dayTemplates || []).find((t) => t.id === session.templateId) || null;
   const minutes = durationMinutes(session);
   const rows = (session.entries || []).map((entry) => {
@@ -103,6 +106,7 @@ export function renderSessionDetail(root, { session, plan, onOpenExercise, onBac
     replaceChildren(root, [
       header(sessionTypeName(session, plan), fmtDate(session.date), onBack),
       el('section', { class: 'card' }, [el('div', { class: 'row', text: describeActivity(session, plan) })]),
+      deleteBtn,
     ]);
     return;
   }
@@ -110,6 +114,7 @@ export function renderSessionDetail(root, { session, plan, onOpenExercise, onBac
     header(sessionTypeName(session, plan), `${fmtDate(session.date)} · ${minutes == null ? '—' : `${minutes} 分钟`} · ${totalSets(session)} 组`, onBack),
     el('ul', { class: 'hist-list', role: 'list' }, rows),
     el('p', { class: 'muted hist-hint', text: '点动作看它的历史折线' }),
+    deleteBtn,
   ]);
 }
 

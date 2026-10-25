@@ -397,6 +397,19 @@ body {
   min-height: 48px;
 }
 
+/* 放弃训练 / 删除记录：红字次级按钮 */
+.btn-discard {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 10px;
+  color: var(--danger);
+}
+
+.hist-delete {
+  color: var(--danger);
+}
+
 .draft-card {
   padding: 12px 16px 16px;
 }
