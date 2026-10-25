@@ -810,3 +810,18 @@ input.num:focus {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+
+/* 进阶 / 退阶提示 */
+.train-hint {
+  margin: -4px 0 10px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.train-hint-up {
+  color: var(--ready);
+}
+
+.train-hint-down {
+  color: var(--warn-text);
+}

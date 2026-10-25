@@ -156,6 +156,11 @@ function renderRow(entry, template, handlers, ctx) {
   );
 
   const children = [head];
+  // 进阶 / 退阶提示：只提示，不改计划；完成或跳过的行不显示
+  const suggestion = !done && !skipped && ctx.suggest ? ctx.suggest(entry, base) : null;
+  if (suggestion) {
+    children.push(el('div', { class: `train-hint train-hint-${suggestion.kind}`, text: `${suggestion.kind === 'up' ? '↑' : '↓'} ${suggestion.text}` }));
+  }
   if (entry.sets.length > 0 && !active) {
     children.push(el('div', { class: 'train-row-sets', text: formatSets(entry.sets, { bodyweight: Boolean((ex.load || {}).bodyweight) }) }));
   }
@@ -286,10 +291,10 @@ export function updateRestClock(root, session, template, now) {
   time.classList.toggle('rest-time-ready', st.ready);
 }
 
-export function renderTrain(root, { session, template, dateText, now, notice, prefill, last, inputs, historyLoaded, onSelect, onCompleteSet, onUndo, onExtra, onEnd, onSkip, onUnskip, onPickAlternate, onInput, onBack, onFinish, onReset }) {
+export function renderTrain(root, { session, template, dateText, now, notice, prefill, last, suggest, inputs, historyLoaded, onSelect, onCompleteSet, onUndo, onExtra, onEnd, onSkip, onUnskip, onPickAlternate, onInput, onBack, onFinish, onReset }) {
   const sum = summarize(session, template);
   const handlers = { onSelect, onCompleteSet, onUndo, onExtra, onEnd, onSkip, onUnskip, onPickAlternate, onInput };
-  const ctx = { prefill, last, inputs, historyLoaded, sessionId: session.id };
+  const ctx = { prefill, last, suggest, inputs, historyLoaded, sessionId: session.id };
   replaceChildren(root, [
     el('header', { class: 'train-header' }, [
       el('div', { class: 'train-topline' }, [

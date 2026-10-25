@@ -33,8 +33,9 @@ import { renderTrain, renderTrainUnavailable, renderAlternateSheet, updateRestCl
 import { putSession, deleteSession, findDraft, listSessions, requestPersistentStorage } from './db.js';
 import { lastSetsFor, prefillFor } from './history.js';
 import { renderHistoryList, renderSessionDetail, renderExerciseChart } from './history-view.js';
+import { suggestionFor } from './progression.js';
 
-const APP_VERSION = '0.8.0';
+const APP_VERSION = '0.9.0';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
 // 全局状态：计划、当前"今天"、进行中的训练、最近一次保存错误（null = 正常）。
@@ -407,6 +408,15 @@ function renderTrainView(root, day) {
     notice: state.saveError,
     prefill: (entry, ex) => prefillFor(entry, ex, lastFor(entry)),
     last: lastFor,
+    suggest: (entry, ex) =>
+      suggestionFor({
+        exercise: ex,
+        entry,
+        templateId: template.id,
+        sessions: state.history,
+        excludeId: state.session.id,
+        increments: ((state.plan.defaults || {}).progression || {}).incrementLb,
+      }),
     inputs: state.inputs,
     historyLoaded: state.historyReady,
     onInput: (key, field, value) => {
