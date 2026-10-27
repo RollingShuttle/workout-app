@@ -160,9 +160,10 @@ export function formatRange(range) {
   return `${min}–${max}`;
 }
 
-// 组数 × 次数，如 "3 × 6–10"、"2–3 × 10–15"；每侧动作加"每侧"。
+// 组数 × 次数，如 "3 × 6–10"、"2–3 × 10–15"；每侧动作加"每侧"；按距离计的动作（countUnit 'm'）加"米"。
 export function formatSetsReps(exercise) {
-  const text = `${formatRange(exercise.sets)} × ${formatRange(exercise.reps)}`;
+  const unit = exercise.countUnit === 'm' ? ' 米' : '';
+  const text = `${formatRange(exercise.sets)} × ${formatRange(exercise.reps)}${unit}`;
   return exercise.perSide ? `${text} 每侧` : text;
 }
 

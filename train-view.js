@@ -84,16 +84,18 @@ function renderSetInputs(entry, base, ex, ctx, handlers) {
   if (!bodyweight) {
     fields.push(numberField({ id: `inp-${base.id}-weight`, label: weightLabel, value: weightVal, delta: weightStep().delta, min: 0, inputmode: 'decimal', onChange: onChange('weight') }));
   }
-  fields.push(numberField({ id: `inp-${base.id}-reps`, label: '次数', value: repsVal, delta: 1, min: 1, inputmode: 'numeric', onChange: onChange('reps') }));
+  // 按距离计的动作（弓步走）：次数框记米数，± 一次 5 米
+  const byDistance = base.countUnit === 'm';
+  fields.push(numberField({ id: `inp-${base.id}-reps`, label: byDistance ? '距离（米）' : '次数', value: repsVal, delta: byDistance ? 5 : 1, min: 1, inputmode: 'numeric', onChange: onChange('reps') }));
   return el('div', { class: 'set-entry' }, [
-    el('p', { class: 'last-ref', text: lastRefText(last, bodyweight, ctx.historyLoaded) }),
+    el('p', { class: 'last-ref', text: lastRefText(last, bodyweight, ctx.historyLoaded, base.countUnit) }),
     el('div', { class: `set-inputs${bodyweight ? ' set-inputs-single' : ''}` }, fields),
     errEl,
   ]);
 }
 
-function lastRefText(last, bodyweight, historyLoaded) {
-  if (last) return `上次（${fmtDateKey(last.date)}）：${formatSets(last.sets, { bodyweight })}`;
+function lastRefText(last, bodyweight, historyLoaded, countUnit = null) {
+  if (last) return `上次（${fmtDateKey(last.date)}）：${formatSets(last.sets, { bodyweight, countUnit })}`;
   return historyLoaded ? '没有上次记录' : '上次记录读取中…';
 }
 
@@ -105,7 +107,7 @@ export function updateLastRef(root, session, template, lastFor) {
     const line = rowEl.querySelector('.last-ref');
     if (!entry || !base || !line) return;
     const ex = effectiveExercise(entry, base);
-    line.textContent = lastRefText(lastFor(entry), Boolean((ex.load || {}).bodyweight), true);
+    line.textContent = lastRefText(lastFor(entry), Boolean((ex.load || {}).bodyweight), true, base.countUnit);
   });
 }
 
@@ -118,7 +120,7 @@ function readSetInputs(rowEl, base, ex) {
   const weight = bodyweight ? null : toNumber(weightEl && weightEl.value);
   const reps = toNumber(repsEl && repsEl.value);
   if (!bodyweight && (weight == null || weight < 0)) return { error: '先填这一组的重量' };
-  if (reps == null || reps < 1 || !Number.isInteger(reps)) return { error: '先填这一组的次数（整数）' };
+  if (reps == null || reps < 1 || !Number.isInteger(reps)) return { error: base.countUnit === 'm' ? '先填这一组的距离（整数米）' : '先填这一组的次数（整数）' };
   return { weight: displayToLb(weight), reps }; // 存 lb
 }
 
@@ -133,7 +135,7 @@ function renderRow(entry, template, handlers, ctx) {
   const active = entry.status === 'active';
   const count = skipped ? '已跳过' : `${completedSets(entry, base)}/${targetSets(base, entry)}`;
   // 每侧动作：两侧都做完再按一次"完成一组"，所以这里只提示"每侧"，不分左右
-  const metaParts = [formatLoad(ex.load), `${formatRange(base.reps)} 次`, base.perSide ? '每侧' : null];
+  const metaParts = [formatLoad(ex.load), `${formatRange(base.reps)} ${base.countUnit === 'm' ? '米' : '次'}`, base.perSide ? '每侧' : null];
   if (entry.usedAlternate) metaParts.unshift(`替代 ${base.name}`);
   const meta = metaParts.filter(Boolean).join(' · ');
   const undoLabel = canCancelExtraSet(entry, base) ? '取消再加一组' : '撤销最后一组';
@@ -165,7 +167,7 @@ function renderRow(entry, template, handlers, ctx) {
     children.push(el('div', { class: `train-hint train-hint-${suggestion.kind}`, text: `${suggestion.kind === 'up' ? '↑' : '↓'} ${suggestion.text}` }));
   }
   if (entry.sets.length > 0 && !active) {
-    children.push(el('div', { class: 'train-row-sets', text: formatSets(entry.sets, { bodyweight: Boolean((ex.load || {}).bodyweight) }) }));
+    children.push(el('div', { class: 'train-row-sets', text: formatSets(entry.sets, { bodyweight: Boolean((ex.load || {}).bodyweight), countUnit: base.countUnit }) }));
   }
   if (active) {
     const complete = () => {
@@ -264,11 +266,13 @@ export function restClockState(session, template, now, defaultRest = 90) {
   const base = session.lastSetExerciseId ? findExercise(template, session.lastSetExerciseId) : null;
   const entry = session.lastSetExerciseId ? findEntry(session, session.lastSetExerciseId) : null;
   const exercise = base && entry ? effectiveExercise(entry, base) : base; // 换了替代动作就显示替代动作名
+  // 已经点到别的动作上了：这段是动作之间的休息，标题不再写上一个动作的名字（2026-10-26 用户要求）
+  const between = Boolean(session.activeExerciseId && session.lastSetExerciseId && session.activeExerciseId !== session.lastSetExerciseId);
   return {
     idle: false,
     text: formatClock(elapsedMs),
     ready: elapsedMs >= reference * 1000,
-    meta: `参考 ${formatClock(reference * 1000)}${exercise ? ` · ${exercise.name}` : ''}`,
+    meta: between ? `动作间休息 · 参考 ${formatClock(reference * 1000)}` : `参考 ${formatClock(reference * 1000)}${exercise ? ` · ${exercise.name}` : ''}`,
   };
 }
 

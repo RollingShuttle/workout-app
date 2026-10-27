@@ -61,7 +61,7 @@ import { buildBackup, backupFileName, parseBackup, normalizeBackupMeta, backupRe
 import { renderSettings } from './settings-view.js';
 import { parseWorkoutsFile, guessKind, conflictWith, sessionFromItem } from './hk-import.js';
 
-const APP_VERSION = '0.16.2';
+const APP_VERSION = '0.17.0';
 const BACKUP_META_KEY = 'backup';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
@@ -559,7 +559,7 @@ function finishRows(session, template) {
     const load = ex ? ex.load || {} : {};
     const n = entry.sets.length;
     const best = n ? bestSetOf(entry.sets, load) : null;
-    const bestText = best ? formatSets([best], { bodyweight: Boolean(load.bodyweight) }) : '';
+    const bestText = best ? formatSets([best], { bodyweight: Boolean(load.bodyweight), countUnit: base ? base.countUnit : null }) : '';
     if (entry.status === 'skipped') return { name, status: 'skipped', text: '跳过' };
     if (!n) return { name, status: 'none', text: '未做' };
     if (entry.status === 'done') return { name, status: 'done', text: `完成 · ${n} 组 · 最佳 ${bestText}` };

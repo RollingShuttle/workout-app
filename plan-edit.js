@@ -57,10 +57,11 @@ function mapTemplate(plan, templateId, fn) {
   return { ...plan, dayTemplates: plan.dayTemplates.map((t) => (t.id === templateId ? fn(t) : t)) };
 }
 
-export function updateExercise(plan, templateId, exerciseId, patch) {
+// 整个替换（id 不变）：表单里取消勾选的字段（perSide / countUnit / notes）要真的消失，合并会把旧值留下来
+export function updateExercise(plan, templateId, exerciseId, exercise) {
   return mapTemplate(plan, templateId, (t) => ({
     ...t,
-    exercises: t.exercises.map((e) => (e.id === exerciseId ? { ...e, ...patch } : e)),
+    exercises: t.exercises.map((e) => (e.id === exerciseId ? { ...exercise, id: e.id } : e)),
   }));
 }
 
@@ -112,6 +113,8 @@ export function exerciseFromForm(form, existing = {}) {
   };
   if (form.perSide) ex.perSide = true;
   else delete ex.perSide;
+  if (form.distance) ex.countUnit = 'm'; // 按距离计（弓步走）：reps 字段存米数
+  else delete ex.countUnit;
   if (form.notes) ex.notes = form.notes;
   else delete ex.notes;
   return ex;

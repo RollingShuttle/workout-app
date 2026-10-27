@@ -51,8 +51,8 @@
         { "id": "hip-thrust", "name": "负重臀桥", "muscle": "臀", "load": { "value": 140, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 8, "max": 12 }, "restSeconds": 120, "alternates": [ { "name": "罗马尼亚硬拉" } ], "notes": "顶端停 1 秒，骨盆略后倾，不用下背顶" },
         { "id": "leg-curl", "name": "腿弯举", "muscle": "腘绳肌", "load": { "value": 120, "unit": "lb", "perSideLoad": true, "label": "120 每边" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 10, "max": 15 }, "restSeconds": 90, "alternates": [] },
         { "id": "leg-extension", "name": "腿屈伸", "muscle": "股四头", "load": { "value": 70, "unit": "lb", "perSideLoad": true, "label": "70 每边" }, "sets": { "min": 2, "max": 3 }, "reps": { "min": 10, "max": 15 }, "restSeconds": 75, "alternates": [] },
-        { "id": "walking-lunge", "name": "弓步走", "muscle": "股四头/臀", "load": { "value": 50, "unit": "lb" }, "perSide": true, "sets": { "min": 1, "max": 2 }, "reps": { "min": 8, "max": 12 }, "restSeconds": 90, "alternates": [ { "name": "分腿蹲" } ], "notes": "一周打 2 次球减到 2 组以内，打 3 次球跳过" },
-        { "id": "standing-calf-raise", "name": "站姿提踵", "muscle": "小腿", "load": { "value": null, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 8, "max": 12 }, "restSeconds": 60, "alternates": [] },
+        { "id": "walking-lunge", "name": "弓步走", "muscle": "股四头/臀", "load": { "value": 50, "unit": "lb" }, "countUnit": "m", "sets": { "min": 1, "max": 2 }, "reps": { "min": 20, "max": 30 }, "restSeconds": 90, "alternates": [ { "name": "分腿蹲" } ], "notes": "按距离计（米）。一周打 2 次球减到 2 组以内，打 3 次球跳过" },
+        { "id": "standing-calf-raise", "name": "站姿提踵", "muscle": "小腿", "load": { "value": null, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 8, "max": 12 }, "restSeconds": 60, "alternates": [ { "name": "坐姿提踵机" } ] },
         { "id": "back-extension", "name": "俯卧挺身", "muscle": "下背/臀/腘绳", "load": { "bodyweight": true, "label": "自重" }, "sets": { "min": 2, "max": 2 }, "reps": { "min": 12, "max": 15 }, "restSeconds": 60, "alternates": [] }
       ]
     },

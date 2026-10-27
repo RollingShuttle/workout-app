@@ -37,3 +37,14 @@ export function formatWeight(lb, { withUnit = true } = {}) {
 export function weightStep() {
   return unit === 'kg' ? { delta: 2.5, step: 0.5 } : { delta: 5, step: 0.5 };
 }
+
+// 另一个单位的写法（历史里磅数旁边带公斤，反之亦然）："47.6 kg" / "105 lb"
+export function otherUnitText(lb) {
+  if (lb == null || typeof lb !== 'number' || !Number.isFinite(lb)) return '';
+  return unit === 'kg' ? `${lb} lb` : `${round1(lb / LB_PER_KG)} kg`;
+}
+
+export function formatWeightDual(lb) {
+  if (lb == null) return '—';
+  return `${formatWeight(lb)}（${otherUnitText(lb)}）`;
+}

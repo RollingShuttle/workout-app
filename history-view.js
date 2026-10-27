@@ -3,7 +3,7 @@ import { el, replaceChildren } from './dom.js';
 import { WEEKDAY_LABELS, parseDateKey, formatLoad } from './schedule.js';
 import { formatSets } from './history.js';
 import { findExercise, effectiveExercise, activeDurationMs } from './workout.js';
-import { formatWeight, lbToDisplay, displayUnit } from './units.js';
+import { formatWeightDual, lbToDisplay, displayUnit } from './units.js';
 import { describeActivity, findCardio } from './activity.js';
 
 function fmtDate(key) {
@@ -91,7 +91,7 @@ export function renderSessionDetail(root, { session, plan, onOpenExercise, onBac
     const name = ex ? ex.name : entry.usedAlternate || entry.exerciseId;
     const bodyweight = Boolean(ex && (ex.load || {}).bodyweight);
     const status = STATUS_LABEL[entry.status] || entry.status;
-    const setsText = entry.sets.length ? formatSets(entry.sets, { bodyweight }) : '—';
+    const setsText = entry.sets.length ? formatSets(entry.sets, { bodyweight, countUnit: base ? base.countUnit : null, dual: true }) : '—';
     return el('li', { class: `hist-ex hist-ex-${entry.status}` }, [
       el('button', { class: 'hist-ex-btn', type: 'button', disabled: !base, onclick: () => onOpenExercise(entry.exerciseId) }, [
         el('span', { class: 'hist-ex-name', text: name }),
@@ -218,13 +218,15 @@ export function renderExerciseChart(root, { exerciseId, plan, sessions, loading,
   const labels = points.map((p) => fmtShortDate(p.date));
   const weightTitle = assisted ? '最佳组助力（越小越难）' : load.perSideLoad ? '最佳组重量（每边）' : '最佳组重量';
   const bestLabel = assisted ? '最低助力' : load.perSideLoad ? '最佳每边' : '最佳';
+  const byDistance = Boolean(base && base.countUnit === 'm');
+  const countWord = byDistance ? '米' : '次';
   const table = el(
     'ul',
     { class: 'hist-list', role: 'list' },
     [...points].reverse().map((p) =>
       el('li', { class: 'hist-point' }, [
         el('span', { class: 'hist-date', text: fmtDate(p.date) }),
-        el('span', { class: 'hist-meta', text: `${bodyweight ? '' : `${bestLabel} ${formatWeight(p.bestWeight)} · `}共 ${p.totalReps == null ? '—' : p.totalReps} 次 · ${p.sets} 组` }),
+        el('span', { class: 'hist-meta', text: `${bodyweight ? '' : `${bestLabel} ${formatWeightDual(p.bestWeight)} · `}共 ${p.totalReps == null ? '—' : p.totalReps} ${countWord} · ${p.sets} 组` }),
       ])
     )
   );
@@ -242,8 +244,8 @@ export function renderExerciseChart(root, { exerciseId, plan, sessions, loading,
               ])
             : null,
           el('section', { class: 'card chart-card' }, [
-            el('h2', { class: 'chart-title', text: '总次数' }),
-            renderLineChart(points.map((p) => p.totalReps), labels, { unit: ' 次' }),
+            el('h2', { class: 'chart-title', text: byDistance ? '总距离' : '总次数' }),
+            renderLineChart(points.map((p) => p.totalReps), labels, { unit: ` ${countWord}` }),
           ]),
           table,
           el('p', { class: 'muted hist-hint', text: '只统计原动作的记录，替代动作的组不计入折线' }),

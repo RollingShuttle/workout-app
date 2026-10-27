@@ -35,18 +35,19 @@ export function suggestionFor({ exercise, entry, templateId, sessions, excludeId
   const allAtMax = recent.every((s) => s.sets.every((set) => set.reps >= reps.max));
   const anyBelowMin = recent.every((s) => s.sets.some((set) => set.reps < reps.min));
   const load = exercise.load || {};
+  const unitWord = exercise.countUnit === 'm' ? ' 米' : ' 次';
   if (allAtMax && !load.bodyweight) {
     const delta = incrementFor(exercise, templateId, increments);
     const text = load.assisted
-      ? `上两次都做满 ${reps.max} 次，可以把助力减 ${formatWeight(Math.abs(delta))}`
-      : `上两次都做满 ${reps.max} 次，可以加重 +${formatWeight(delta)}`;
+      ? `上两次都做满 ${reps.max}${unitWord}，可以把助力减 ${formatWeight(Math.abs(delta))}`
+      : `上两次都做满 ${reps.max}${unitWord}，可以加重 +${formatWeight(delta)}`;
     return { kind: 'up', delta, text };
   }
   if (allAtMax && load.bodyweight) {
-    return { kind: 'up', delta: 0, text: `上两次都做满 ${reps.max} 次，可以加难度或加负重` };
+    return { kind: 'up', delta: 0, text: `上两次都做满 ${reps.max}${unitWord}，可以加难度或加负重` };
   }
   if (anyBelowMin) {
-    return { kind: 'down', delta: 0, text: `上两次都有组低于 ${reps.min} 次，下次减一组` };
+    return { kind: 'down', delta: 0, text: `上两次都有组低于 ${reps.min}${unitWord}，下次减一组` };
   }
   return null;
 }

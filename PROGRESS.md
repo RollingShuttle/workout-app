@@ -24,6 +24,7 @@
 - 2026-10-24：结束训练的汇总表单（spec 3.2）：总组数、用时、每个动作的状态 / 组数 / 最佳组，"保存并结束"才写库，"继续训练"回去接着练。**spec 的功能项全部完成。**
 - 2026-10-25：真机反馈两条：连点 ± 按钮页面放大缩小（iOS 双击缩放）→ 全局 touch-action: manipulation；数值要能手动输入任意数（器械档位不是 1 / 2.5）→ step="any"，± 只在当前值上加减不再对齐档位。
 - 2026-10-25：Apple Health 的打球 / 二区 / 散步可以同步进来：手机上用快捷指令导出"运动记录.txt"（搭建步骤 docs/shortcut-apple-health.md），设置页"导入 Apple Health 运动记录"选文件 → 预览每条"记为"→ 入库，自动去重。
+- 2026-10-26：真机使用反馈五条：同一动作下一组沿用上一组的重量和次数；换到别的动作后秒表标题显示"动作间休息"；弓步走按距离（米）计（动作可设 countUnit: 'm'，计划编辑里有开关）；站姿提踵加替代动作"坐姿提踵机"；历史里磅数旁边带公斤。顺手修了计划编辑取消勾选不生效的 bug。
 - 2026-10-25：实测 iOS 18 的快捷指令读不到体能训练（Find Health Samples 没有 Workouts 类型），用户决定先不做 Apple Health 同步：设置页的入口和说明已撤掉，hk-import.js 和 app.js 里的处理代码保留。
 
 ## 部署
@@ -40,6 +41,8 @@
 - 功能项已做完；后面按"以后再说"和真机使用中的反馈来。
 
 ## 日志（每步追加一行：日期 · 做了什么 · 验收结果 · 下一步）
+
+- 2026-10-26 · 真机反馈五条：(1) history.js prefillFor 次数改成 本次上一组 → 上次同组数 → 区间上限（重量本来就是本次上一组优先）；(2) train-view.js restClockState：activeExerciseId 和 lastSetExerciseId 不同（已点到别的动作）时标题"动作间休息 · 参考 mm:ss"，否则仍"参考 mm:ss · 动作名"；(3) 动作加可选字段 countUnit: 'm'：schedule.js formatSetsReps 加"米"，train-view 次数框标签"距离（米）"、± 5、校验文案"整数米"、行里"20–30 米"，history.js formatSets 次数后带 m，progression.js 文案"做满 30 米"，history-view 折线标题"总距离"、表格"共 N 米"，plan-view 动作表单加"按距离（米）计"勾选 → plan-edit exerciseFromForm 写 / 删 countUnit；training-plan.json 弓步走改 countUnit m、20–30 米、去掉每侧；(4) training-plan.json 站姿提踵 alternates 加"坐姿提踵机"；(5) units.js otherUnitText / formatWeightDual，history.js formatSets 加 dual 选项 → 历史详情每组"120×12 (54.4 kg)"，折线表格"最佳 120 lb（54.4 kg）"（kg 模式下反过来带 lb）；顺手修 bug：plan-edit updateExercise 原来是合并，取消勾选的 perSide / countUnit / notes 删不掉，改成整个替换（id 不变）；sw.js v31 · 决定：弓步走的距离区间先按 20–30 米写进内置计划，用户在计划里改；手机上已存的计划不会自动变，要么在 计划 → 腿日 里勾"按距离计"并给提踵加替代动作，要么设置里"重新载入内置计划" · 验收通过（只用浏览器实测，10/26 腿日）：腿弯举第 1 组预填 120/15，记 120×12 后第 2 组预填 120/12，记 11 后第 3 组预填 11；同一动作标题"参考 01:30 · 腿弯举"，点到腿屈伸后"动作间休息 · 参考 01:30"，记一组后"参考 01:15 · 腿屈伸"；弓步走标签"距离（米）"、预填 30、空着报"先填这一组的距离（整数米）"、+ 变 35、记 50×35 后行里"50×35m"、第 2 组预填 35；站姿提踵的替代选单有"坐姿提踵机"；结束汇总"最佳 50×35m"；历史详情"120×12 (54.4 kg) · 120×11 (54.4 kg)"，折线表"最佳每边 120 lb（54.4 kg）"、弓步走"总距离 / 共 35 米"；计划编辑取消勾选后变"每侧"且库里 countUnit / notes 消失，重新勾上恢复；无报错 · 真机复验
 
 - 2026-10-25 · Apple Health 运动记录导入（用户要求，spec 之外；网页 App 读不了 HealthKit，走快捷指令导出文件）：hk-import.js（文件格式每行"类型|开始 ISO|结束 ISO|平均心率"，也认 JSON 数组；parseWorkoutsFile 跳过坏行、按开始时间去重、倒序；guessKind：羽毛球 → 打球，骑行 / 椭圆机 / 划船机等 → 二区，步行类按平均心率 115–145 → 二区否则散步，其他 → 跳过；cardioIdFor 二区按时长挑 zone2-30/40/45；conflictWith：importKey 相同 → 已导入过，当天已有同类记录 → same-day；sessionFromItem 生成和手动记一样的活动记录但 startedAt / finishedAt 是真实时间，带 source: 'health' 和 importKey，note "Apple Health · 类型"）、settings-view.js（数据区"导入 Apple Health 运动记录"按钮 + 说明；预览卡：每条"日期 时间 · 类型 · 分钟 · 心率"+ 备注 + "记为"下拉（打球 / 二区 / 散步 / 跳过），"导入 N 条"/"取消"，导入后显示"已导入 N 条"）、app.js（previewHkImport / setHkChoice / applyHkImport；putSessions 后并进 state.history 按时间排）、docs/shortcut-apple-health.md（快捷指令逐步搭建说明）、style.css、sw.js v28 · 决定：快捷指令只导时长和平均心率，Zone3+ 留空（Apple Health 不存，估算不准）；记录日期按手机本地时区取开始时间的那天；去重靠开始时间，当天已手动记过同类的默认跳过但可改 · 验收通过（只用浏览器实测，DataTransfer 塞假文件）：7 行（含坏行和重复行）→ 预览 5 条，猜测分别 打球 / 二区 / 散步 / 二区 / 跳过（游泳）；把游泳改成散步 → "导入 5 条" → 库里 5 条 source=health、骑行 46 分钟 → zone2-45、心率空的为 null；再导同一文件加一条当天的羽毛球 → 全部默认跳过（已导入过 / 当天已有同类记录）、按钮变"没有要导入的"；坏文件报"没有读到任何一条体能训练"；JSON 数组也能读；10/24 首页"今天已记录：羽毛球 65 分钟 · 平均心率 135 · Apple Health · 羽毛球"、本周打球 1 次；历史列表 5 条；无报错 · 真机：搭快捷指令、导一次真数据
 
