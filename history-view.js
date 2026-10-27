@@ -3,7 +3,7 @@ import { el, replaceChildren } from './dom.js';
 import { WEEKDAY_LABELS, parseDateKey, formatLoad } from './schedule.js';
 import { formatSets } from './history.js';
 import { findExercise, effectiveExercise, activeDurationMs } from './workout.js';
-import { formatWeightDual, lbToDisplay, displayUnit } from './units.js';
+import { formatWeightDual, lbToDisplay, displayToLb, displayUnit } from './units.js';
 import { describeActivity, findCardio } from './activity.js';
 
 function fmtDate(key) {
@@ -79,7 +79,7 @@ export function renderHistoryList(root, { sessions, plan, loading, error, onRetr
 
 /* ---------- 单次训练详情 ---------- */
 
-export function renderSessionDetail(root, { session, plan, onOpenExercise, onBack, onDelete }) {
+export function renderSessionDetail(root, { session, plan, onOpenExercise, onEditEntry, onEditActivity, onBack, onDelete }) {
   const deleteBtn = onDelete
     ? el('div', { class: 'train-footer' }, [el('button', { class: 'btn-secondary btn-finish hist-delete', type: 'button', onclick: onDelete }, '删除这条记录')])
     : null;
@@ -99,13 +99,18 @@ export function renderSessionDetail(root, { session, plan, onOpenExercise, onBac
         el('span', { class: 'hist-ex-sets', text: setsText }),
         entry.usedAlternate && base ? el('span', { class: 'hist-ex-alt', text: `替代 ${base.name}` }) : null,
       ]),
+      // 改已录入的记录：替代动作、每组重量 / 次数、增删组
+      onEditEntry ? el('button', { class: 'btn-secondary hist-ex-edit', type: 'button', onclick: () => onEditEntry(entry.exerciseId) }, '编辑') : null,
     ]);
   });
   if (session.cardio) {
     // 打球 / 有氧 / 散步：没有动作，只有一条记录
     replaceChildren(root, [
       header(sessionTypeName(session, plan), fmtDate(session.date), onBack),
-      el('section', { class: 'card' }, [el('div', { class: 'row', text: describeActivity(session, plan) })]),
+      el('section', { class: 'card' }, [
+        el('div', { class: 'row', text: describeActivity(session, plan) }),
+        onEditActivity ? el('button', { class: 'btn-secondary hist-ex-edit', type: 'button', onclick: onEditActivity }, '编辑') : null,
+      ]),
       deleteBtn,
     ]);
     return;
@@ -113,9 +118,113 @@ export function renderSessionDetail(root, { session, plan, onOpenExercise, onBac
   replaceChildren(root, [
     header(sessionTypeName(session, plan), `${fmtDate(session.date)} · ${minutes == null ? '—' : `${minutes} 分钟`} · ${totalSets(session)} 组`, onBack),
     el('ul', { class: 'hist-list', role: 'list' }, rows),
-    el('p', { class: 'muted hist-hint', text: '点动作看它的历史折线' }),
+    el('p', { class: 'muted hist-hint', text: '点动作看它的历史折线，点"编辑"改记录' }),
     deleteBtn,
   ]);
+}
+
+/* ---------- 改一条已录入的动作记录 ---------- */
+
+function toNum(v) {
+  if (v === '' || v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+// base：计划里的动作（可能已删掉 → null，此时只能改组）。保存时 onSave({ usedAlternate, sets: [{ weight(lb), reps }] })
+export function renderEntryEditSheet(root, { entry, base, onSave, onClose }) {
+  const load = base ? base.load || {} : {};
+  const bodyweight = Boolean(load.bodyweight);
+  const byDistance = Boolean(base && base.countUnit === 'm');
+  const alternates = base ? base.alternates || [] : [];
+  const unit = displayUnit();
+  let sets = entry.sets.map((s) => ({ weight: s.weight == null ? null : lbToDisplay(s.weight), reps: s.reps ?? null }));
+  const errEl = el('p', { class: 'set-error', 'aria-live': 'polite' });
+  const onKey = (e) => {
+    if (e.key === 'Escape') close();
+  };
+  const close = () => {
+    document.removeEventListener('keydown', onKey);
+    onClose();
+  };
+  document.addEventListener('keydown', onKey);
+  const list = el('div', { class: 'edit-sets' });
+  // 加组 / 删组前先把输入框里的值收回来，重画后才不丢
+  const syncFromDom = () => {
+    sets = sets.map((s, i) => {
+      const w = list.querySelector(`#es-w-${i}`);
+      const r = list.querySelector(`#es-r-${i}`);
+      return { weight: w ? toNum(w.value) : null, reps: r ? toNum(r.value) : null };
+    });
+  };
+  const paint = () => {
+    replaceChildren(list, [
+      el('div', { class: 'edit-set edit-set-head' }, [
+        el('span', { class: 'edit-set-label' }),
+        bodyweight ? null : el('span', { class: 'muted', text: `重量 ${unit}` }),
+        el('span', { class: 'muted', text: byDistance ? '距离（米）' : '次数' }),
+      ]),
+      ...sets.map((s, i) =>
+        el('div', { class: 'edit-set' }, [
+          el('span', { class: 'edit-set-label', text: `第 ${i + 1} 组` }),
+          bodyweight
+            ? null
+            : el('input', { class: 'num sheet-input edit-num', id: `es-w-${i}`, type: 'number', inputmode: 'decimal', step: 'any', min: '0', value: s.weight == null || Number.isNaN(s.weight) ? '' : String(s.weight), 'aria-label': `第 ${i + 1} 组重量` }),
+          el('input', { class: 'num sheet-input edit-num', id: `es-r-${i}`, type: 'number', inputmode: 'numeric', step: '1', min: '1', value: s.reps == null || Number.isNaN(s.reps) ? '' : String(s.reps), 'aria-label': `第 ${i + 1} 组${byDistance ? '距离' : '次数'}` }),
+        ])
+      ),
+      sets.length ? null : el('p', { class: 'muted', text: '没有组（保存后这个动作记为跳过）' }),
+    ]);
+  };
+  paint();
+  const addSet = () => {
+    syncFromDom();
+    const last = sets[sets.length - 1];
+    sets.push({ weight: last ? last.weight : bodyweight ? null : lbToDisplay(load.value ?? null), reps: last ? last.reps : (base && base.reps ? base.reps.max : null) });
+    paint();
+  };
+  const removeSet = () => {
+    if (!sets.length) return;
+    syncFromDom();
+    sets.pop();
+    paint();
+  };
+  const save = () => {
+    syncFromDom();
+    const out = [];
+    for (let i = 0; i < sets.length; i++) {
+      const s = sets[i];
+      if (s.reps == null || Number.isNaN(s.reps) || !Number.isInteger(s.reps) || s.reps < 1) return (errEl.textContent = `第 ${i + 1} 组的${byDistance ? '距离' : '次数'}要填 ≥1 的整数`);
+      if (!bodyweight && (s.weight == null || Number.isNaN(s.weight) || s.weight < 0)) return (errEl.textContent = `第 ${i + 1} 组的重量要填`);
+      out.push({ weight: bodyweight ? null : displayToLb(s.weight), reps: s.reps });
+    }
+    const altSel = root.querySelector('#es-alt');
+    document.removeEventListener('keydown', onKey);
+    onSave({ usedAlternate: altSel && altSel.value ? altSel.value : null, sets: out });
+    return undefined;
+  };
+  const sheet = el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': '修改记录', tabindex: '-1' }, [
+    el('div', { class: 'sheet-title', text: `修改 · ${base ? base.name : entry.exerciseId}` }),
+    base && alternates.length
+      ? el('div', { class: 'field' }, [
+          el('label', { class: 'field-label', for: 'es-alt', text: '做的是哪个动作' }),
+          el('select', { class: 'sheet-select', id: 'es-alt' }, [
+            el('option', { value: '', selected: !entry.usedAlternate }, `原动作：${base.name}`),
+            ...alternates.map((a) => el('option', { value: a.name, selected: entry.usedAlternate === a.name }, a.name)),
+          ]),
+        ])
+      : null,
+    list,
+    el('div', { class: 'edit-set-actions' }, [
+      el('button', { class: 'btn-secondary', type: 'button', onclick: addSet }, '加一组'),
+      el('button', { class: 'btn-secondary', type: 'button', onclick: removeSet }, '删掉最后一组'),
+    ]),
+    errEl,
+    el('button', { class: 'btn-primary sheet-save', type: 'button', onclick: save }, '保存'),
+    el('button', { class: 'btn-secondary sheet-cancel', type: 'button', onclick: close }, '取消'),
+  ]);
+  root.appendChild(el('div', { class: 'sheet-backdrop', onclick: (e) => { if (e.target === e.currentTarget) close(); } }, [sheet]));
+  sheet.focus();
 }
 
 /* ---------- 动作折线 ---------- */

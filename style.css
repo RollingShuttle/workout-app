@@ -787,6 +787,58 @@ input.num:focus {
   font-size: 13px;
 }
 
+/* 历史详情里的"编辑"按钮和修改表单 */
+.hist-ex-edit {
+  display: block;
+  margin: 0 14px 12px;
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+
+.card .hist-ex-edit {
+  margin: 8px 0 4px;
+}
+
+.edit-sets {
+  margin: 4px 0 8px;
+}
+
+.edit-set {
+  display: grid;
+  grid-template-columns: 64px 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.edit-set-head {
+  margin-bottom: 2px;
+  font-size: 13px;
+}
+
+.edit-set-label {
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.edit-num {
+  min-height: 44px;
+  text-align: center;
+  font-size: 18px;
+}
+
+.edit-set-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.edit-set-actions .btn-secondary {
+  flex: 1;
+  min-height: 40px;
+}
+
 /* 折线图 */
 .chart-card {
   padding: 12px 14px 8px;

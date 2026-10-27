@@ -36,7 +36,7 @@ import {
 import { renderTrain, renderTrainUnavailable, renderAlternateSheet, renderFinishSheet, updateRestClock, updateLastRef, restClockState } from './train-view.js';
 import { putSession, deleteSession, findDraft, listSessions, requestPersistentStorage, putSessions, clearSessions, clearSettings, isPersisted, getSetting, putSetting } from './db.js';
 import { lastSetsFor, prefillFor, formatSets } from './history.js';
-import { renderHistoryList, renderSessionDetail, renderExerciseChart } from './history-view.js';
+import { renderHistoryList, renderSessionDetail, renderExerciseChart, renderEntryEditSheet, sessionTypeName } from './history-view.js';
 import { suggestionFor } from './progression.js';
 import { createActivitySession, weekSummary, ballCountThisWeek, BALL_WEEKLY_LIMIT, activitiesOn, findCardio } from './activity.js';
 import { renderActivitySheet, renderWeekStrip, renderTodayActivities } from './activity-view.js';
@@ -61,7 +61,7 @@ import { buildBackup, backupFileName, parseBackup, normalizeBackupMeta, backupRe
 import { renderSettings } from './settings-view.js';
 import { parseWorkoutsFile, guessKind, conflictWith, sessionFromItem } from './hk-import.js';
 
-const APP_VERSION = '0.17.0';
+const APP_VERSION = '0.18.0';
 const BACKUP_META_KEY = 'backup';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
@@ -94,6 +94,7 @@ const state = {
   backupMeta: normalizeBackupMeta(null), // 上次备份的训练数和时间（settings 表 key=backup）
   finishSheet: null, // 结束训练的汇总表单打开时：{ session, template, title, totalSets, minutes, rows }
   hkPreview: null, // Apple Health 导入的预览 { name, items: [{ ...item, choice, note }] } | { name, error } | { name, done: n }
+  historyEdit: null, // 历史详情里打开的修改表单：{ sessionId, exerciseId } 或 { sessionId, activity: true }
 };
 
 function setStatus(text) {
@@ -794,6 +795,87 @@ function watchRestVisibility() {
 
 /* ---------- 路由与启动 ---------- */
 
+/* ---------- 改已录入的记录（历史详情里） ---------- */
+
+async function putHistorySession(next) {
+  try {
+    await putSession(next);
+    state.history = state.history.map((s) => (s.id === next.id ? next : s));
+    state.saveError = null;
+  } catch (err) {
+    state.saveError = `保存失败：${err.message}`;
+  }
+  state.historyEdit = null;
+  render();
+}
+
+// 改一个动作的记录：替代动作、每组重量 / 次数、组数；状态按组数重算
+function saveEntryEdit(session, exerciseId, { usedAlternate, sets }) {
+  const template = findTemplate(session.templateId);
+  const base = template ? findExercise(template, exerciseId) : null;
+  const old = session.entries.find((e) => e.exerciseId === exerciseId);
+  if (!old) return;
+  const fallbackAt = session.finishedAt || Date.now();
+  const newSets = sets.map((s, i) => {
+    const orig = old.sets[i];
+    const set = { setNo: i + 1, weight: s.weight, reps: s.reps, completedAt: orig ? orig.completedAt : fallbackAt, restTakenSeconds: orig ? orig.restTakenSeconds : null };
+    if (usedAlternate) set.usedAlternate = usedAlternate;
+    return set;
+  });
+  const status = newSets.length === 0 ? 'skipped' : base && newSets.length >= targetSets(base, old) ? 'done' : 'partial';
+  const next = {
+    ...session,
+    entries: session.entries.map((e) => (e.exerciseId === exerciseId ? { ...e, usedAlternate: usedAlternate || null, sets: newSets, status } : e)),
+  };
+  putHistorySession(next);
+}
+
+// 改打球 / 有氧 / 散步记录：时长、心率、Zone3+、备注；手动记的按新时长倒推开始时间，导入的保留真实时间
+function saveActivityEdit(session, { minutes, avgHr, zone3Min, note }) {
+  const next = { ...session, cardio: { ...session.cardio, minutes, avgHr, zone3Min, note: note || null } };
+  if (!session.source && session.finishedAt) next.startedAt = session.finishedAt - minutes * 60000;
+  putHistorySession(next);
+}
+
+function activityKindOf(session) {
+  if (session.activityKind === 'ball') return 'ball';
+  return session.cardioId === 'walk' ? 'walk' : 'cardio';
+}
+
+function renderHistoryEditSheet(root, session) {
+  const edit = state.historyEdit;
+  if (!edit || edit.sessionId !== session.id) return;
+  const close = () => {
+    state.historyEdit = null;
+    render();
+  };
+  if (edit.activity) {
+    const c = session.cardio || {};
+    renderActivitySheet(root, {
+      kind: activityKindOf(session),
+      title: `修改 · ${sessionTypeName(session, state.plan)}`,
+      defaultMinutes: c.minutes,
+      initial: { minutes: c.minutes, avgHr: c.avgHr, zone3Min: c.zone3Min, note: c.note },
+      warning: null,
+      onSave: (values) => saveActivityEdit(session, values),
+      onClose: close,
+    });
+    return;
+  }
+  const entry = session.entries.find((e) => e.exerciseId === edit.exerciseId);
+  if (!entry) {
+    state.historyEdit = null;
+    return;
+  }
+  const template = findTemplate(session.templateId);
+  renderEntryEditSheet(root, {
+    entry,
+    base: template ? findExercise(template, edit.exerciseId) : null,
+    onSave: (values) => saveEntryEdit(session, edit.exerciseId, values),
+    onClose: close,
+  });
+}
+
 function renderHistoryView(root, view) {
   ensureHistory();
   const sessions = state.history;
@@ -824,7 +906,16 @@ function renderHistoryView(root, view) {
       onOpenExercise: (exerciseId) => { location.hash = `#exercise/${encodeURIComponent(exerciseId)}`; },
       onBack: () => { location.hash = '#history'; },
       onDelete: () => deleteRecord(session),
+      onEditEntry: (exerciseId) => {
+        state.historyEdit = { sessionId: session.id, exerciseId };
+        render();
+      },
+      onEditActivity: () => {
+        state.historyEdit = { sessionId: session.id, activity: true };
+        render();
+      },
     });
+    renderHistoryEditSheet(root, session);
     return;
   }
   renderExerciseChart(root, {
@@ -1289,6 +1380,7 @@ function renderView() {
     state.importPreview = null;
     state.hkPreview = null;
   }
+  if (view !== 'session') state.historyEdit = null;
   if (view === 'home') renderHome(root, day);
   else if (view === 'plan' || view === 'planDay') renderPlanView(root, view);
   else if (view === 'settings') renderSettingsView(root);

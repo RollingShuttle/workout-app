@@ -10,7 +10,8 @@ function toInt(value) {
 }
 
 // 底部选单表单。kind：ball | cardio | walk。保存时 onSave({ minutes, avgHr, zone3Min, note })
-export function renderActivitySheet(root, { kind, title, defaultMinutes, warning, onSave, onClose }) {
+// initial：改已有记录时的初始值 { minutes, avgHr, zone3Min, note }
+export function renderActivitySheet(root, { kind, title, defaultMinutes, warning, initial = null, onSave, onClose }) {
   const numField = (id, label, value) =>
     el('div', { class: 'field' }, [
       el('label', { class: 'field-label', for: id, text: label }),
@@ -43,12 +44,12 @@ export function renderActivitySheet(root, { kind, title, defaultMinutes, warning
   const sheet = el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': title, tabindex: '-1' }, [
     el('div', { class: 'sheet-title', text: title }),
     warning ? el('p', { class: 'today-note sheet-warning', text: warning }) : null,
-    el('div', { class: 'set-inputs' }, [numField('act-minutes', '时长（分钟）', defaultMinutes), numField('act-hr', '平均心率（可选）', null)]),
-    kind === 'ball' ? el('div', { class: 'set-inputs set-inputs-single' }, [numField('act-z3', 'Zone3+ 分钟（可选）', null)]) : null,
+    el('div', { class: 'set-inputs' }, [numField('act-minutes', '时长（分钟）', initial ? initial.minutes : defaultMinutes), numField('act-hr', '平均心率（可选）', initial ? initial.avgHr : null)]),
+    kind === 'ball' ? el('div', { class: 'set-inputs set-inputs-single' }, [numField('act-z3', 'Zone3+ 分钟（可选）', initial ? initial.zone3Min : null)]) : null,
     kind !== 'ball'
       ? el('div', { class: 'field' }, [
           el('label', { class: 'field-label', for: 'act-note', text: '备注（可选）' }),
-          el('input', { class: 'sheet-text', id: 'act-note', type: 'text', maxlength: '60', placeholder: '例如：坡度快走 8%' }),
+          el('input', { class: 'sheet-text', id: 'act-note', type: 'text', maxlength: '60', placeholder: '例如：坡度快走 8%', value: initial && initial.note ? initial.note : '' }),
         ])
       : null,
     errEl,
