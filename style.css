@@ -1316,3 +1316,40 @@ input.num:focus {
 .rules-list li + li {
   margin-top: 6px;
 }
+
+/* 接下来 7 天 */
+.upcoming-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.upcoming-day {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.upcoming-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.upcoming-date {
+  color: var(--muted);
+  font-size: 14px;
+  min-width: 96px;
+}
+
+.upcoming-title {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.upcoming-detail {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}

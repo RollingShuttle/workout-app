@@ -61,7 +61,7 @@ import { buildBackup, backupFileName, parseBackup, normalizeBackupMeta, backupRe
 import { renderSettings } from './settings-view.js';
 import { parseWorkoutsFile, guessKind, conflictWith, sessionFromItem } from './hk-import.js';
 
-const APP_VERSION = '0.18.0';
+const APP_VERSION = '0.18.1';
 const BACKUP_META_KEY = 'backup';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
@@ -425,6 +425,7 @@ function renderHome(root, day) {
     day.kind !== 'strength' ? el('div', { class: 'home-actions home-actions-row' }, activityButtons(day)) : null,
     state.historyReady ? postStrengthCardioButton(day, todayKey) : null,
     renderWeekStrip({ summary, todayKey, ballCount, limit: BALL_WEEKLY_LIMIT }),
+    renderUpcoming(plan, date),
     renderRules(plan.rules),
     el('div', { class: 'home-links' }, [
       el('a', { class: 'btn-secondary link-btn', href: '#history' }, '历史记录'),
@@ -476,6 +477,42 @@ function dismissBackupReminder() {
 function markBackedUp(sessions, now) {
   saveBackupMeta({ lastCount: finishedTrainingCount(sessions), lastAt: now, snoozedUntil: null });
   render();
+}
+
+// 接下来 7 天的安排（用户要求：别到当天才知道）：折叠区，标题行带明天的安排；展开后每天一行，
+// 力量日列动作名，有氧日列时长心率，调课的带标签
+function renderUpcoming(plan, date) {
+  const days = [];
+  for (let i = 1; i <= 7; i++) {
+    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate() + i);
+    days.push({ d, day: resolveDay(plan, d) });
+  }
+  const label = (i, d) => (i === 0 ? '明天' : i === 1 ? '后天' : WEEKDAY_LABELS[d.getDay()]);
+  const detail = (day) => {
+    if (day.kind === 'strength') return (day.day.exercises || []).map((e) => e.name).join(' · ');
+    if (day.kind === 'cardio' && day.cardio) return formatCardio(day.cardio);
+    if (day.kind === 'ballOptional') return `不打球做 ${day.fallback ? day.fallback.name : '休息'}`;
+    if (day.kind === 'rest') return day.ballOptional ? '休息、散步，或打本周第三次球' : '休息、散步';
+    return '';
+  };
+  return el('details', { class: 'rules upcoming' }, [
+    el('summary', { class: 'rules-summary', text: `接下来 7 天 · 明天 ${days[0].day.title}` }),
+    el(
+      'ul',
+      { class: 'upcoming-list', role: 'list' },
+      days.map(({ d, day }, i) =>
+        el('li', { class: 'upcoming-day' }, [
+          el('div', { class: 'upcoming-head' }, [
+            el('span', { class: 'upcoming-date', text: `${label(i, d)} · ${d.getMonth() + 1}月${d.getDate()}日` }),
+            el('span', { class: 'upcoming-title', text: day.title }),
+            day.source === 'override' ? el('span', { class: 'tag', text: '调课' }) : null,
+          ]),
+          detail(day) ? el('div', { class: 'upcoming-detail', text: detail(day) }) : null,
+          day.note ? el('div', { class: 'upcoming-detail', text: day.note }) : null,
+        ])
+      )
+    ),
+  ]);
 }
 
 // 规则提示（spec 3.1 底部）：计划里的 rules[] 折叠显示，默认收起；没有规则就不画
