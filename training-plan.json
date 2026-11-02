@@ -20,8 +20,8 @@
       "type": "strength",
       "enabled": true,
       "exercises": [
-        { "id": "incline-bench", "name": "斜上卧推", "muscle": "胸", "load": { "value": 105, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 6, "max": 10 }, "restSeconds": 150, "alternates": [] },
-        { "id": "flat-bench", "name": "卧推", "muscle": "胸", "load": { "value": 105, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 6, "max": 10 }, "restSeconds": 150, "alternates": [ { "name": "斜下胸推机器", "load": { "value": 45, "unit": "lb" } } ] },
+        { "id": "incline-bench", "name": "斜上卧推", "muscle": "上胸", "load": { "value": 105, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 6, "max": 10 }, "restSeconds": 150, "alternates": [ { "name": "卧推", "load": { "value": 105, "unit": "lb" } }, { "name": "斜上哑铃卧推" }, { "name": "斜上器械推胸" } ] },
+        { "id": "assisted-dip", "name": "辅助双杠臂屈伸", "muscle": "下胸/三头", "load": { "value": null, "unit": "lb", "assisted": true }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 6, "max": 10 }, "restSeconds": 150, "alternates": [ { "name": "斜下胸推机器", "load": { "value": 45, "unit": "lb" } }, { "name": "斜下卧推" }, { "name": "双杠臂屈伸（自重）" } ], "notes": "身体前倾、肘微开练下胸；助力越小越难，进阶方向是减助力" },
         { "id": "seated-ohp", "name": "坐姿肩推", "muscle": "肩", "load": { "value": 30, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 6, "max": 10 }, "restSeconds": 120, "alternates": [] },
         { "id": "lateral-raise", "name": "侧平举", "muscle": "肩", "load": { "value": 15, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 12, "max": 20 }, "restSeconds": 60, "alternates": [] },
         { "id": "db-overhead-tri", "name": "三头肌单手站姿哑铃", "muscle": "三头", "load": { "value": 25, "unit": "lb" }, "sets": { "min": 2, "max": 3 }, "reps": { "min": 10, "max": 15 }, "restSeconds": 75, "alternates": [] }
@@ -29,15 +29,31 @@
     },
     {
       "id": "pull",
-      "name": "拉日",
+      "name": "拉日 · 正手",
       "type": "strength",
       "enabled": true,
+      "alternateWith": "pullB",
       "exercises": [
         { "id": "assisted-pullup", "name": "引体向上", "muscle": "背", "load": { "value": 37.5, "unit": "lb", "assisted": true, "label": "37.5 助力" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 6, "max": 10 }, "restSeconds": 150, "alternates": [], "notes": "助力重量越小越难，进阶方向是减助力" },
-        { "id": "cable-row", "name": "划船", "muscle": "背", "load": { "value": 110, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 8, "max": 12 }, "restSeconds": 120, "alternates": [ { "name": "胸部支撑哑铃划船" }, { "name": "坐姿划船机" }, { "name": "宽握绳索划船" }, { "name": "T杠划船" } ], "notes": "替代动作每 4-6 周轮换一次" },
-        { "id": "one-arm-db-row", "name": "单臂哑铃划船", "muscle": "背", "load": { "value": null, "unit": "lb" }, "perSide": true, "sets": { "min": 3, "max": 3 }, "reps": { "min": 8, "max": 12 }, "restSeconds": 90, "alternates": [ { "name": "单臂绳索划船" }, { "name": "单臂机器划船" }, { "name": "上斜凳单臂胸支撑划船" } ], "notes": "重量以弱侧（左）为准，两侧组数相同" },
+        { "id": "seated-row-wide", "name": "坐姿正手宽距划船", "muscle": "上背/后束", "load": { "value": 110, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 8, "max": 12 }, "restSeconds": 120, "alternates": [ { "name": "正手杠铃划船" }, { "name": "T杠划船" }, { "name": "胸部支撑哑铃划船" } ], "notes": "肘向外、拉向胸口，练上背和后束" },
+        { "id": "one-arm-db-row", "name": "单臂哑铃划船", "muscle": "背阔", "load": { "value": null, "unit": "lb" }, "perSide": true, "sets": { "min": 3, "max": 3 }, "reps": { "min": 8, "max": 12 }, "restSeconds": 90, "alternates": [ { "name": "单臂绳索划船" }, { "name": "单臂机器划船" }, { "name": "上斜凳单臂胸支撑划船" } ], "notes": "重量以弱侧（左）为准，两侧组数相同" },
         { "id": "face-pull", "name": "面拉", "muscle": "后束/肩袖", "load": { "value": 57.5, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 15, "max": 20 }, "restSeconds": 60, "alternates": [] },
-        { "id": "biceps-curl", "name": "肱二弯举", "muscle": "二头", "load": { "value": 25, "unit": "lb" }, "sets": { "min": 2, "max": 3 }, "reps": { "min": 10, "max": 15 }, "restSeconds": 60, "alternates": [] },
+        { "id": "biceps-curl", "name": "肱二弯举", "muscle": "二头", "load": { "value": 25, "unit": "lb" }, "sets": { "min": 2, "max": 3 }, "reps": { "min": 10, "max": 15 }, "restSeconds": 60, "alternates": [ { "name": "锤式弯举" } ] },
+        { "id": "hanging-leg-raise", "name": "悬垂举腿", "muscle": "核心", "load": { "bodyweight": true, "label": "自重" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 10, "max": 15 }, "restSeconds": 60, "alternates": [] }
+      ]
+    },
+    {
+      "id": "pullB",
+      "name": "拉日 · 反手",
+      "type": "strength",
+      "enabled": true,
+      "alternateWith": "pull",
+      "exercises": [
+        { "id": "assisted-pullup", "name": "引体向上", "muscle": "背", "load": { "value": 37.5, "unit": "lb", "assisted": true, "label": "37.5 助力" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 6, "max": 10 }, "restSeconds": 150, "alternates": [], "notes": "助力重量越小越难，进阶方向是减助力" },
+        { "id": "seated-row-underhand", "name": "坐姿反手划船", "muscle": "背阔/下背阔", "load": { "value": null, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 8, "max": 12 }, "restSeconds": 120, "alternates": [ { "name": "反手杠铃划船" }, { "name": "反手器械划船" } ], "notes": "肘贴身、拉向肚脐，练背阔下部" },
+        { "id": "underhand-close-pulldown", "name": "反手窄距绳索下拉", "muscle": "背阔", "load": { "value": null, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 8, "max": 12 }, "restSeconds": 90, "alternates": [ { "name": "反手高位下拉机" }, { "name": "辅助反手引体" } ] },
+        { "id": "face-pull", "name": "面拉", "muscle": "后束/肩袖", "load": { "value": 57.5, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 15, "max": 20 }, "restSeconds": 60, "alternates": [] },
+        { "id": "biceps-curl", "name": "肱二弯举", "muscle": "二头", "load": { "value": 25, "unit": "lb" }, "sets": { "min": 2, "max": 3 }, "reps": { "min": 10, "max": 15 }, "restSeconds": 60, "alternates": [ { "name": "锤式弯举" } ], "notes": "反手日二头已经被划船和下拉练到，做 2 组或换锤式弯举" },
         { "id": "hanging-leg-raise", "name": "悬垂举腿", "muscle": "核心", "load": { "bodyweight": true, "label": "自重" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 10, "max": 15 }, "restSeconds": 60, "alternates": [] }
       ]
     },

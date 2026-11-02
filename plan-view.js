@@ -87,7 +87,7 @@ export function renderPlanOverview(root, { plan, saveError, onEditWeekday, onAdd
     el('li', { class: 'hist-row plan-day-row' }, [
       el('button', { class: 'hist-row-btn', type: 'button', onclick: () => onOpenDay(t.id) }, [
         el('span', { class: 'hist-date', text: t.name }),
-        el('span', { class: 'hist-type', text: `${(t.exercises || []).length} 个动作` }),
+        el('span', { class: 'hist-type', text: `${(t.exercises || []).length} 个动作${t.alternateWith ? ` · 与「${((plan.dayTemplates || []).find((x) => x.id === t.alternateWith) || {}).name || t.alternateWith}」交替` : ''}` }),
       ]),
       el('label', { class: 'plan-toggle' }, [
         el('input', { type: 'checkbox', checked: t.enabled !== false, onchange: (e) => onToggleTemplate(t.id, e.target.checked) }),

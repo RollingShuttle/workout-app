@@ -63,7 +63,7 @@ import { parseWorkoutsFile, guessKind, conflictWith, sessionFromItem } from './h
 import { applySkip, canSkip } from './skip-day.js';
 import { renderSkipSheet } from './skip-view.js';
 
-const APP_VERSION = '0.19.1';
+const APP_VERSION = '0.20.0';
 const BACKUP_META_KEY = 'backup';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
@@ -411,6 +411,7 @@ function renderHome(root, day) {
       day.note
         ? el('p', { class: day.source === 'override' ? 'today-note' : 'today-note today-note-plain', text: day.note })
         : null,
+      day.rotationNote ? el('p', { class: 'today-note today-note-plain', text: day.rotationNote }) : null,
     ]),
     el('section', { class: 'card' }, [
       renderBody(day, plan),
@@ -525,13 +526,56 @@ function markBackedUp(sessions, now) {
   render();
 }
 
+// 两个训练日轮流（模板的 alternateWith，如 拉日 · 正手 / 拉日 · 反手）：上一次做的是 A，这次就做 B。
+// 今天已有这对里的记录（草稿或已完成）就沿用它，重进页面不会换。历史没读到时先按排程上的那个。
+function withRotation(day, history, todayKey) {
+  if (day.kind !== 'strength' || !day.day.alternateWith) return day;
+  const other = findTemplate(day.day.alternateWith);
+  if (!other || other.enabled === false) return day;
+  const pair = [day.day.id, other.id];
+  const inPair = (s) => s && pair.includes(s.templateId);
+  const todays = history.find((s) => inPair(s) && s.date === todayKey) || (inPair(state.session) && state.session.date === todayKey ? state.session : null);
+  let chosen = day.day;
+  let rotationNote = null;
+  if (todays) {
+    chosen = findTemplate(todays.templateId) || day.day;
+  } else {
+    const last = history.find((s) => s.finishedAt && inPair(s) && s.date < todayKey);
+    if (last) {
+      chosen = last.templateId === day.day.id ? other : day.day;
+      const lastName = (findTemplate(last.templateId) || {}).name || last.templateId;
+      const d = parseDateKey(last.date);
+      rotationNote = `与「${chosen.id === other.id ? day.day.name : other.name}」交替，上次（${d ? formatDateText(d) : last.date}）做的是 ${lastName}`;
+    } else {
+      rotationNote = `与「${other.name}」交替，先做这一个`;
+    }
+  }
+  return { ...day, day: chosen, title: chosen.name, rotationNote, rotationPair: pair };
+}
+
 // 接下来 7 天的安排（用户要求：别到当天才知道）：折叠区，标题行带明天的安排；展开后每天一行，
 // 力量日列动作名，有氧日列时长心率，调课的带标签
 function renderUpcoming(plan, date) {
   const days = [];
+  const todayKey = toDateKey(date);
+  // 轮流的训练日：今天那一对算过了，后面的依次交替
+  const rot = {};
+  const todayDay = withRotation(resolveDay(plan, date), state.history, todayKey);
+  if (todayDay.rotationPair) rot[todayDay.rotationPair.slice().sort().join('|')] = todayDay.rotationPair.find((id) => id !== todayDay.day.id);
   for (let i = 1; i <= 7; i++) {
     const d = new Date(date.getFullYear(), date.getMonth(), date.getDate() + i);
-    days.push({ d, day: resolveDay(plan, d) });
+    let day = resolveDay(plan, d);
+    if (day.kind === 'strength' && day.day.alternateWith) {
+      const other = findTemplate(day.day.alternateWith);
+      if (other && other.enabled !== false) {
+        const key = [day.day.id, other.id].sort().join('|');
+        if (!(key in rot)) rot[key] = withRotation(day, state.history, todayKey).day.id;
+        const chosen = findTemplate(rot[key]) || day.day;
+        rot[key] = chosen.id === day.day.id ? other.id : day.day.id;
+        day = { ...day, day: chosen, title: chosen.name };
+      }
+    }
+    days.push({ d, day });
   }
   const label = (i, d) => (i === 0 ? '明天' : i === 1 ? '后天' : WEEKDAY_LABELS[d.getDay()]);
   const detail = (day) => {
@@ -1449,7 +1493,7 @@ function renderView() {
     renderFirstRun(root);
     return;
   }
-  const day = resolveDay(state.plan, state.date);
+  const day = withRotation(resolveDay(state.plan, state.date), state.history, toDateKey(state.date));
   const view = currentView();
   if (view === 'train') {
     renderTrainView(root, day);
