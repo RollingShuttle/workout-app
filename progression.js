@@ -22,6 +22,7 @@ export function recentSessionsFor(sessions, exerciseId, usedAlternate, excludeId
 
 export function incrementFor(exercise, templateId, increments = {}) {
   const load = exercise.load || {};
+  if (load.step) return load.assisted ? -load.step : load.step; // 动作自带档位（机器一格多少）优先
   if (load.assisted) return increments.assistedPullUp ?? -5;
   if (templateId === 'legs') return increments.lowerMachine ?? 10;
   return increments.upper ?? 5;

@@ -123,6 +123,7 @@ export function exerciseFromForm(form, existing = {}) {
     if (form.assisted) load.assisted = true;
     if (form.perSideLoad) load.perSideLoad = true;
     if (form.label) load.label = form.label;
+    if (form.step) load.step = form.step; // 档位：± 一次加减多少 lb（机器一格），进阶提示也按它
   }
   const ex = {
     ...existing,

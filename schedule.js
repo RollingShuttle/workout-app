@@ -151,6 +151,7 @@ export function formatLoad(load) {
   if (load.label) return load.label;
   if (load.bodyweight) return '自重';
   if (load.value == null) return '首次做时填';
+  if (load.assisted) return `${formatWeight(load.value)} 助力`; // 助力机器：数值越小越难
   return formatWeight(load.value);
 }
 

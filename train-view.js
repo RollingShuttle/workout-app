@@ -82,7 +82,9 @@ function renderSetInputs(entry, base, ex, ctx, handlers) {
   const last = ctx.last(entry);
   const fields = [];
   if (!bodyweight) {
-    fields.push(numberField({ id: `inp-${base.id}-weight`, label: weightLabel, value: weightVal, delta: weightStep().delta, min: 0, inputmode: 'decimal', onChange: onChange('weight') }));
+    // 动作自带档位（load.step，如助力机器一格 8.5 lb）就按档位加减，否则按单位默认（lb ±5 / kg ±2.5）
+    const delta = load.step ? lbToDisplay(load.step) : weightStep().delta;
+    fields.push(numberField({ id: `inp-${base.id}-weight`, label: weightLabel, value: weightVal, delta, min: 0, inputmode: 'decimal', onChange: onChange('weight') }));
   }
   // 按距离计的动作（弓步走）：次数框记米数，± 一次 5 米
   const byDistance = base.countUnit === 'm';

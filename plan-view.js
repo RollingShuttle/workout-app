@@ -253,7 +253,7 @@ export function renderExerciseSheet(root, { title, exercise, defaultRestSeconds 
     el('div', { class: 'plan-checks' }, [checkField('ex-bodyweight', '自重', load.bodyweight), checkField('ex-assisted', '助力（数值越小越难）', load.assisted), checkField('ex-perSideLoad', '每边配重', load.perSideLoad), checkField('ex-perSide', '每侧各做', ex.perSide), checkField('ex-distance', '按距离（米）计，不数次数', ex.countUnit === 'm')]),
     el('div', { class: 'set-inputs' }, [numField('ex-sets-min', '组数 最少', (ex.sets || {}).min ?? 3, { step: '1', min: '1' }), numField('ex-sets-max', '组数 目标', (ex.sets || {}).max ?? 3, { step: '1', min: '1' })]),
     el('div', { class: 'set-inputs' }, [numField('ex-reps-min', '次数 下限', (ex.reps || {}).min ?? 6, { step: '1', min: '1' }), numField('ex-reps-max', '次数 上限', (ex.reps || {}).max ?? 10, { step: '1', min: '1' })]),
-    numField('ex-rest', '参考休息秒数', ex.restSeconds ?? defaultRestSeconds, { step: '5', min: '0' }),
+    el('div', { class: 'set-inputs' }, [numField('ex-rest', '参考休息秒数', ex.restSeconds ?? defaultRestSeconds, { step: '5', min: '0' }), numField('ex-step', `档位 ${displayUnit()}（± 一格多少，可选）`, load.step ? lbToDisplay(load.step) : null, { step: 'any', min: '0', placeholder: '如 8.5' })]),
     textField('ex-alts', '替代动作（逗号分隔，可写 名称:重量）', altsDisplayText(ex.alternates), { placeholder: '斜下胸推机器:45，哑铃推' }),
     textField('ex-notes', '备注（可选）', ex.notes, { maxlength: '80' }),
   ];
@@ -269,12 +269,15 @@ export function renderExerciseSheet(root, { title, exercise, defaultRestSeconds 
     if (nums.setsMin > nums.setsMax || nums.repsMin > nums.repsMax) return (shell.errEl.textContent = '最少 / 下限不能大于目标 / 上限');
     if (Number.isNaN(nums.weight) || (nums.weight != null && nums.weight < 0)) return (shell.errEl.textContent = '重量不对');
     if (nums.restSeconds == null || nums.restSeconds < 0) return (shell.errEl.textContent = '休息秒数不对');
+    const stepVal = toNum(q('ex-step').value);
+    if (Number.isNaN(stepVal) || (stepVal != null && stepVal <= 0)) return (shell.errEl.textContent = '档位要大于 0，或留空');
     shell.done();
     onSave({
       name,
       muscle: q('ex-muscle').value.trim(),
       ...nums,
       weight: displayToLb(nums.weight),
+      step: stepVal ? displayToLb(stepVal) : null,
       label: q('ex-label').value.trim(),
       bodyweight: q('ex-bodyweight').checked,
       assisted: q('ex-assisted').checked,
