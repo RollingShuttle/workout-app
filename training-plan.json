@@ -60,7 +60,7 @@
       "id": "upperB",
       "name": "上肢B + 二区",
       "type": "strength+cardio",
-      "enabled": false,
+      "enabled": true,
       "enableWhen": "7.5 mg 剂量稳定、三餐结构跑顺之后（预计 2026-11 上旬）加入周四；在此之前周四只做二区",
       "exercises": [
         { "id": "machine-chest-press", "name": "器械推胸", "muscle": "胸", "load": { "value": null, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 10, "max": 12 }, "restSeconds": 90, "alternates": [ { "name": "哑铃平板卧推" } ] },

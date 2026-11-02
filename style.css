@@ -1399,3 +1399,21 @@ input.num:focus {
   margin: 8px 0 0;
   font-size: 12px;
 }
+
+.skip-ok {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.skip-warn {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  color: var(--warn-text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.skip-warn li + li {
+  margin-top: 4px;
+}

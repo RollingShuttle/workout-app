@@ -101,4 +101,41 @@ export function applySkip(plan, date, mode, { ballDateKey } = {}) {
   return { error: '不认识的处理方式' };
 }
 
+/* ---------- 排程规则冲突检查（只检查，不阻止；用户决定） ---------- */
+
+const isLegs = (day) => day.kind === 'strength' && (day.day.id === 'legs' || /腿/.test(day.day.name));
+const isPush = (day) => day.kind === 'strength' && (day.day.id === 'push' || /推日/.test(day.day.name));
+const isUpperB = (day) => day.kind === 'strength' && (day.day.id === 'upperB' || /上肢B/.test(day.day.name));
+const isBall = (day) => day.kind === 'ballOptional';
+const isCardio = (day) => day.kind === 'cardio' || (day.kind === 'strength' && Boolean(day.day.cardio)); // 上肢B 后面接二区也算
+
+// 从 startDate 起 days 天里相邻两天的冲突：[{ dateKey, text }]。规则来自 training-plan.json 的 rules：
+//   腿日和球之间至少隔 1 天 / 球的次日不排腿日；推日和上肢B 之间至少隔 1 天；
+//   同一肌群 48 小时（按同一训练日模板连续两天算）；二区不要放在重腿日前一天
+export function ruleConflicts(plan, startDate, days = 15) {
+  const seq = [];
+  for (let i = 0; i < days; i++) {
+    const d = addDays(startDate, i);
+    seq.push({ d, day: resolveDay(plan, d) });
+  }
+  const out = [];
+  const push = (b, text) => out.push({ dateKey: b.day.dateKey, text });
+  for (let i = 0; i < seq.length - 1; i++) {
+    const a = seq[i];
+    const b = seq[i + 1];
+    const pair = `${fmtDay(a.d)} ${a.day.title} 和 ${fmtDay(b.d)} ${b.day.title} 挨着`;
+    if ((isLegs(a.day) && isBall(b.day)) || (isBall(a.day) && isLegs(b.day))) push(b, `${pair}：腿日和球要隔一天`);
+    if ((isPush(a.day) && isUpperB(b.day)) || (isUpperB(a.day) && isPush(b.day))) push(b, `${pair}：推日和上肢B 要隔一天`);
+    if (a.day.kind === 'strength' && b.day.kind === 'strength' && a.day.day.id === b.day.day.id) push(b, `${pair}：同一肌群要隔 48 小时`);
+    if (isCardio(a.day) && isLegs(b.day)) push(b, `${pair}：二区不要放在重腿日前一天`);
+  }
+  return out;
+}
+
+// 处理方案带来的新冲突（原计划里本来就有的不算）
+export function newConflicts(plan, nextPlan, date) {
+  const before = new Set(ruleConflicts(plan, addDays(date, -1)).map((c) => c.text));
+  return ruleConflicts(nextPlan, addDays(date, -1)).filter((c) => !before.has(c.text));
+}
+
 export { DAY_MS };

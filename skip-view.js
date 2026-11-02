@@ -1,6 +1,15 @@
 // skip-view.js — "这天不练"的底部表单：跳过 / 顺延 / 压缩到某个打球日。只画 DOM。
 import { el } from './dom.js';
-import { shiftPreview, upcomingBallDays, fmtDay } from './skip-day.js';
+import { shiftPreview, upcomingBallDays, fmtDay, applySkip, newConflicts } from './skip-day.js';
+
+// 某种处理方案会不会撞上排程规则：撞了就列出来（橙色），由用户决定
+function conflictList(plan, date, mode, extra) {
+  const r = applySkip(plan, date, mode, extra);
+  if (!r.plan) return null;
+  const list = newConflicts(plan, r.plan, date);
+  if (!list.length) return el('p', { class: 'muted skip-ok', text: '不撞排程规则。' });
+  return el('ul', { class: 'skip-warn' }, list.map((c) => el('li', { text: `⚠ ${c.text}` })));
+}
 
 // day：resolveDay 的结果；date：Date。onApply(mode, { ballDateKey })
 export function renderSkipSheet(root, { plan, date, day, onApply, onClose }) {
@@ -20,7 +29,13 @@ export function renderSkipSheet(root, { plan, date, day, onApply, onClose }) {
   const canMove = day.kind === 'strength' || day.kind === 'cardio';
   const { moves, consumedRest } = canMove ? shiftPreview(plan, date) : { moves: [], consumedRest: null };
   const balls = canMove ? upcomingBallDays(plan, date) : [];
-  const ballSel = el('select', { class: 'sheet-select', id: 'skip-ball', 'aria-label': '压缩到哪个打球日' }, balls.map((b, i) => el('option', { value: b.dateKey, selected: i === 0 }, b.label)));
+  const compressWarn = el('div', { class: 'skip-warn-box' });
+  const ballSel = el(
+    'select',
+    { class: 'sheet-select', id: 'skip-ball', 'aria-label': '压缩到哪个打球日', onchange: () => { compressWarn.replaceChildren(conflictList(plan, date, 'compress', { ballDateKey: ballSel.value }) || ''); } },
+    balls.map((b, i) => el('option', { value: b.dateKey, selected: i === 0 }, b.label))
+  );
+  if (balls.length) compressWarn.replaceChildren(conflictList(plan, date, 'compress', { ballDateKey: balls[0].dateKey }) || '');
 
   const option = (title, desc, children) => el('section', { class: 'skip-option' }, [el('div', { class: 'skip-option-title', text: title }), desc ? el('p', { class: 'muted skip-option-desc', text: desc }) : null, ...[].concat(children)]);
 
@@ -35,6 +50,7 @@ export function renderSkipSheet(root, { plan, date, day, onApply, onClose }) {
             : '后面 14 天里没有可以挪的日子。',
           [
             moves.length ? el('ul', { class: 'skip-moves' }, moves.map((m) => el('li', { text: `${m.title}：${fmtDay(m.from)} → ${fmtDay(m.to)}` }))) : null,
+            moves.length ? conflictList(plan, date, 'shift') : null,
             moves.length ? el('button', { class: 'btn-secondary skip-btn', type: 'button', onclick: () => apply('shift') }, '顺延') : null,
           ]
         )
@@ -46,6 +62,7 @@ export function renderSkipSheet(root, { plan, date, day, onApply, onClose }) {
           balls.length
             ? [
                 el('div', { class: 'field' }, [el('label', { class: 'field-label', for: 'skip-ball', text: '压缩到' }), ballSel]),
+                compressWarn,
                 el('button', { class: 'btn-secondary skip-btn', type: 'button', onclick: () => apply('compress', { ballDateKey: ballSel.value }) }, `那天改练 ${day.title}`),
               ]
             : null
