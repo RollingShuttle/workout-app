@@ -79,12 +79,12 @@
       "enabled": true,
       "enableWhen": "7.5 mg 剂量稳定、三餐结构跑顺之后（预计 2026-11 上旬）加入周四；在此之前周四只做二区",
       "exercises": [
-        { "id": "machine-chest-press", "name": "器械推胸", "muscle": "胸", "load": { "value": null, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 10, "max": 12 }, "restSeconds": 90, "alternates": [ { "name": "哑铃平板卧推" } ] },
-        { "id": "lat-pulldown", "name": "高位下拉", "muscle": "背", "load": { "value": null, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 10, "max": 12 }, "restSeconds": 90, "alternates": [ { "name": "直臂下压" } ] },
+        { "id": "incline-machine-press", "name": "上斜器械推胸", "muscle": "上胸", "load": { "value": null, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 10, "max": 12 }, "restSeconds": 90, "alternates": [ { "name": "上斜哑铃卧推" }, { "name": "器械推胸" } ], "notes": "比推日的斜上卧推轻一档，不主练中胸" },
+        { "id": "neutral-grip-pulldown", "name": "对握高位下拉", "muscle": "背阔", "load": { "value": null, "unit": "lb" }, "sets": { "min": 3, "max": 3 }, "reps": { "min": 10, "max": 12 }, "restSeconds": 90, "alternates": [ { "name": "直臂下压" }, { "name": "正手高位下拉" } ], "notes": "拉日已有正手宽距和反手窄距，这里用对握补第三种握法" },
         { "id": "cable-lateral-raise", "name": "绳索侧平举", "muscle": "肩", "load": { "value": null, "unit": "lb" }, "sets": { "min": 2, "max": 2 }, "reps": { "min": 15, "max": 20 }, "restSeconds": 60, "alternates": [ { "name": "哑铃侧平举", "load": { "value": 15, "unit": "lb" } } ] },
         { "id": "rear-delt-fly", "name": "后束飞鸟", "muscle": "后束", "load": { "value": null, "unit": "lb" }, "sets": { "min": 2, "max": 2 }, "reps": { "min": 15, "max": 20 }, "restSeconds": 60, "alternates": [ { "name": "反向蝶机" } ] },
-        { "id": "triceps-pushdown", "name": "三头绳索下压", "muscle": "三头", "load": { "value": null, "unit": "lb" }, "sets": { "min": 2, "max": 2 }, "reps": { "min": 12, "max": 15 }, "restSeconds": 60, "alternates": [ { "name": "绳索过头伸展" } ] },
-        { "id": "db-curl", "name": "哑铃弯举", "muscle": "二头", "load": { "value": 25, "unit": "lb" }, "sets": { "min": 2, "max": 2 }, "reps": { "min": 10, "max": 12 }, "restSeconds": 60, "alternates": [ { "name": "锤式弯举" } ] }
+        { "id": "cable-overhead-extension", "name": "绳索过顶臂屈伸", "muscle": "三头长头", "load": { "value": null, "unit": "lb" }, "sets": { "min": 2, "max": 2 }, "reps": { "min": 12, "max": 15 }, "restSeconds": 60, "alternates": [ { "name": "三头绳索下压" } ], "notes": "双杠已练外侧 / 内侧头，这里补长头" },
+        { "id": "hammer-curl", "name": "锤式弯举", "muscle": "肱桡肌/前臂", "load": { "value": 25, "unit": "lb" }, "sets": { "min": 2, "max": 2 }, "reps": { "min": 10, "max": 12 }, "restSeconds": 60, "alternates": [ { "name": "哑铃弯举", "load": { "value": 25, "unit": "lb" } } ], "notes": "和周一拉日的二头弯举错开" }
       ],
       "cardio": { "id": "zone2", "name": "二区有氧", "modality": [ "坡度快走", "骑行" ], "durationMin": { "min": 30, "max": 40 }, "heartRate": { "min": 120, "max": 140, "cap": 145 }, "order": "力量之后" }
     }
