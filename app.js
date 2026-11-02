@@ -60,8 +60,10 @@ import { setWakeLock, wakeLockSupported, unlockAudio, beep, audioSupported } fro
 import { buildBackup, backupFileName, parseBackup, normalizeBackupMeta, backupReminder, finishedTrainingCount, BACKUP_REMIND_DAYS, BACKUP_SNOOZE_DAYS } from './backup.js';
 import { renderSettings } from './settings-view.js';
 import { parseWorkoutsFile, guessKind, conflictWith, sessionFromItem } from './hk-import.js';
+import { applySkip, canSkip } from './skip-day.js';
+import { renderSkipSheet } from './skip-view.js';
 
-const APP_VERSION = '0.18.1';
+const APP_VERSION = '0.19.0';
 const BACKUP_META_KEY = 'backup';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
@@ -95,6 +97,8 @@ const state = {
   finishSheet: null, // 结束训练的汇总表单打开时：{ session, template, title, totalSets, minutes, rows }
   hkPreview: null, // Apple Health 导入的预览 { name, items: [{ ...item, choice, note }] } | { name, error } | { name, done: n }
   historyEdit: null, // 历史详情里打开的修改表单：{ sessionId, exerciseId } 或 { sessionId, activity: true }
+  skipSheet: null, // "这天不练"表单打开时：{ dateKey }
+  skipNotice: null, // 刚处理完"不练"的一句说明，首页显示一次
 };
 
 function setStatus(text) {
@@ -391,8 +395,11 @@ function renderHome(root, day) {
   const draftIsToday = Boolean(draft && sessionMatches(draft, day));
   const resume = draftIsToday;
 
+  const skipNotice = state.skipNotice;
+  state.skipNotice = null; // 只显示这一次
   replaceChildren(root, [
     state.saveError ? el('p', { class: 'problem save-error', text: state.saveError }) : null,
+    skipNotice ? el('p', { class: 'today-note skip-notice', text: skipNotice }) : null,
     el('header', { class: 'today-header' }, [
       el('div', { class: 'today-date' }, [
         el('span', { text: formatDateText(date) }),
@@ -424,6 +431,9 @@ function renderHome(root, day) {
       : null,
     day.kind !== 'strength' ? el('div', { class: 'home-actions home-actions-row' }, activityButtons(day)) : null,
     state.historyReady ? postStrengthCardioButton(day, todayKey) : null,
+    canSkip(day) && !resume
+      ? el('div', { class: 'home-actions home-actions-row' }, [el('button', { class: 'btn-secondary link-btn skip-today', type: 'button', onclick: () => openSkipSheet(todayKey) }, '今天不练')])
+      : null,
     renderWeekStrip({ summary, todayKey, ballCount, limit: BALL_WEEKLY_LIMIT }),
     renderUpcoming(plan, date),
     renderRules(plan.rules),
@@ -440,6 +450,42 @@ function renderHome(root, day) {
       onClose: () => { state.activitySheet = null; render(); },
     });
   }
+  if (state.skipSheet) renderSkipSheetFor(root, state.skipSheet.dateKey);
+}
+
+/* ---------- 这天不练：跳过 / 顺延 / 压缩打球日 ---------- */
+
+function openSkipSheet(dateKey) {
+  state.skipSheet = { dateKey };
+  render();
+}
+
+function renderSkipSheetFor(root, dateKey) {
+  const date = parseDateKey(dateKey);
+  const day = date ? resolveDay(state.plan, date) : null;
+  if (!day || !canSkip(day)) {
+    state.skipSheet = null;
+    return;
+  }
+  renderSkipSheet(root, {
+    plan: state.plan,
+    date,
+    day,
+    onApply: (mode, extra) => {
+      const r = applySkip(state.plan, date, mode, extra);
+      if (r.error) {
+        window.alert(r.error);
+        return;
+      }
+      state.skipSheet = null;
+      state.skipNotice = r.summary;
+      applyPlan(r.plan); // 写 overrides 进计划并重画；可在 计划 → 调课 里撤销
+    },
+    onClose: () => {
+      state.skipSheet = null;
+      render();
+    },
+  });
 }
 
 // 备份提醒卡：超过 14 天没备份、期间又完成过训练才出现；"稍后再说"推迟 7 天
@@ -506,6 +552,7 @@ function renderUpcoming(plan, date) {
             el('span', { class: 'upcoming-date', text: `${label(i, d)} · ${d.getMonth() + 1}月${d.getDate()}日` }),
             el('span', { class: 'upcoming-title', text: day.title }),
             day.source === 'override' ? el('span', { class: 'tag', text: '调课' }) : null,
+            canSkip(day) ? el('button', { class: 'btn-secondary upcoming-skip', type: 'button', 'aria-label': `${label(i, d)} 不练`, onclick: () => openSkipSheet(day.dateKey) }, '不练') : null,
           ]),
           detail(day) ? el('div', { class: 'upcoming-detail', text: detail(day) }) : null,
           day.note ? el('div', { class: 'upcoming-detail', text: day.note }) : null,
@@ -1411,7 +1458,10 @@ function renderView() {
   stopRestTicker();
   state.trainTemplate = null;
   state.picker = null; // 选单开着时离开训练页，别让它下次再弹出来
-  if (view !== 'home') state.activitySheet = null;
+  if (view !== 'home') {
+    state.activitySheet = null;
+    state.skipSheet = null;
+  }
   if (view !== 'plan' && view !== 'planDay') state.planSheet = null;
   if (view !== 'settings') {
     state.importPreview = null;

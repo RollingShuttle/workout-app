@@ -1353,3 +1353,49 @@ input.num:focus {
   font-size: 13px;
   line-height: 1.4;
 }
+
+.upcoming-skip {
+  margin-left: auto;
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+/* 这天不练 */
+.skip-notice {
+  margin: 0 0 10px;
+}
+
+.skip-option {
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.skip-option-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.skip-option-desc {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.skip-btn {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+}
+
+.skip-moves {
+  margin: 0 0 8px;
+  padding: 0 0 0 18px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.skip-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
