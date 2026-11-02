@@ -32,8 +32,10 @@ import {
   effectiveExercise,
   targetSets,
   bestSetOf,
+  orderedEntries,
+  restReferenceSeconds,
 } from './workout.js';
-import { renderTrain, renderTrainUnavailable, renderAlternateSheet, renderFinishSheet, updateRestClock, updateLastRef, restClockState } from './train-view.js';
+import { renderTrain, renderTrainUnavailable, renderAlternateSheet, renderFinishSheet, updateRestClock, updateLastRef, restClockState, formatClock } from './train-view.js';
 import { putSession, deleteSession, findDraft, listSessions, requestPersistentStorage, putSessions, clearSessions, clearSettings, isPersisted, getSetting, putSetting } from './db.js';
 import { lastSetsFor, prefillFor, formatSets } from './history.js';
 import { renderHistoryList, renderSessionDetail, renderExerciseChart, renderEntryEditSheet, sessionTypeName } from './history-view.js';
@@ -62,8 +64,9 @@ import { renderSettings } from './settings-view.js';
 import { parseWorkoutsFile, guessKind, conflictWith, sessionFromItem } from './hk-import.js';
 import { applySkip, setDayTo, undoOverride } from './skip-day.js';
 import { renderSkipSheet } from './skip-view.js';
+import { native } from './native.js';
 
-const APP_VERSION = '0.21.2';
+const APP_VERSION = '0.22.0';
 const BACKUP_META_KEY = 'backup';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
@@ -557,17 +560,19 @@ function withRotation(day, history, todayKey) {
   return { ...day, day: chosen, title: chosen.name, rotationNote, rotationPair: pair };
 }
 
-// 接下来 7 天的安排（用户要求：别到当天才知道）：折叠区，标题行带明天的安排；展开后每天一行，
-// 力量日列动作名，有氧日列时长心率，调课的带标签
-function renderUpcoming(plan, date) {
-  const days = [];
+// 从 date 起第 from 天到第 to 天的安排（含轮流：今天那一对先算过了，后面的依次交替）：[{ d, day }]
+function upcomingDays(plan, date, from, to) {
   const todayKey = toDateKey(date);
-  // 轮流的训练日：今天那一对算过了，后面的依次交替
   const rot = {};
   const todayDay = withRotation(resolveDay(plan, date), state.history, todayKey);
   if (todayDay.rotationPair) rot[todayDay.rotationPair.slice().sort().join('|')] = todayDay.rotationPair.find((id) => id !== todayDay.day.id);
-  for (let i = 1; i <= 7; i++) {
+  const days = [];
+  for (let i = from; i <= to; i++) {
     const d = new Date(date.getFullYear(), date.getMonth(), date.getDate() + i);
+    if (i === 0) {
+      days.push({ d, day: todayDay });
+      continue;
+    }
     let day = resolveDay(plan, d);
     if (day.kind === 'strength' && day.day.alternateWith) {
       const other = findTemplate(day.day.alternateWith);
@@ -581,14 +586,24 @@ function renderUpcoming(plan, date) {
     }
     days.push({ d, day });
   }
+  return days;
+}
+
+// 一天安排的一行说明：力量日列动作名，有氧日时长心率，打球日写不打球做什么
+function dayDetail(day) {
+  if (day.kind === 'strength') return (day.day.exercises || []).map((e) => e.name).join(' · ');
+  if (day.kind === 'cardio' && day.cardio) return formatCardio(day.cardio);
+  if (day.kind === 'ballOptional') return `不打球做 ${day.fallback ? day.fallback.name : '休息'}`;
+  if (day.kind === 'rest') return day.ballOptional ? '休息、散步，或打本周第三次球' : '休息、散步';
+  return '';
+}
+
+// 接下来 7 天的安排（用户要求：别到当天才知道）：折叠区，标题行带明天的安排；展开后每天一行，
+// 力量日列动作名，有氧日列时长心率，调课的带标签
+function renderUpcoming(plan, date) {
+  const days = upcomingDays(plan, date, 1, 7);
   const label = (i, d) => (i === 0 ? '明天' : i === 1 ? '后天' : WEEKDAY_LABELS[d.getDay()]);
-  const detail = (day) => {
-    if (day.kind === 'strength') return (day.day.exercises || []).map((e) => e.name).join(' · ');
-    if (day.kind === 'cardio' && day.cardio) return formatCardio(day.cardio);
-    if (day.kind === 'ballOptional') return `不打球做 ${day.fallback ? day.fallback.name : '休息'}`;
-    if (day.kind === 'rest') return day.ballOptional ? '休息、散步，或打本周第三次球' : '休息、散步';
-    return '';
-  };
+  const detail = dayDetail;
   return el('details', { class: 'rules upcoming' }, [
     el('summary', { class: 'rules-summary', text: `接下来 7 天 · 明天 ${days[0].day.title}` }),
     el(
@@ -828,8 +843,9 @@ function renderTrainView(root, day) {
     },
     onSelect: (id) => update(selectExercise(state.session, template, id)),
     onCompleteSet: (id, values) => {
-      if (state.settings.sound) unlockAudio(); // 必须在点击手势里解锁音频（spec 3.3）
+      if (state.settings.sound && !native.available) unlockAudio(); // 必须在点击手势里解锁音频（spec 3.3）
       state.inputs = null;
+      native.haptic('light');
       update({ ...completeSet(state.session, template, id, Date.now(), { ...values, autoStartRest: state.settings.autoStartRest }), pendingInput: null });
     },
     onUndo: (id) => update(undoLastSet(state.session, template, id)),
@@ -884,7 +900,11 @@ function tickRest() {
   updateRestClock(document.getElementById('app'), state.session, state.trainTemplate, now, rest);
   const st = restClockState(state.session, state.trainTemplate, now, rest);
   const start = state.session.restStartedAt;
-  if (state.settings.sound && lastClock && lastClock.start === start && !lastClock.ready && st.ready) beep();
+  if (lastClock && lastClock.start === start && !lastClock.ready && st.ready) {
+    // App 版靠本地通知出声（前台也显示），网页版才用 WebAudio；震动两边都给
+    if (state.settings.sound && !native.available) beep();
+    native.haptic('success');
+  }
   lastClock = { start, ready: st.ready };
 }
 
@@ -1215,6 +1235,10 @@ async function exportBackup() {
   const json = JSON.stringify(buildBackup({ plan: state.plan, settings: state.settings, sessions, now }), null, 2);
   const name = backupFileName(now);
   const file = new File([json], name, { type: 'application/json' });
+  if (native.exportFile(name, json)) {
+    markBackedUp(sessions, now); // App 版：原生弹分享面板
+    return;
+  }
   if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title: name });
@@ -1234,13 +1258,17 @@ async function exportBackup() {
   markBackedUp(sessions, now);
 }
 
+// 备份文件的内容 → 预览（网页的 <input type=file> 和 App 版原生文件选择器都走这里）
+function previewImportText(name, text) {
+  const parsed = parseBackup(String(text));
+  state.importPreview = parsed.ok ? { name, data: parsed.data, summary: parsed.summary } : { name, error: parsed.error };
+  if (currentView() !== 'settings') location.hash = '#settings';
+  render();
+}
+
 function previewImport(file) {
   const reader = new FileReader();
-  reader.onload = () => {
-    const parsed = parseBackup(String(reader.result));
-    state.importPreview = parsed.ok ? { name: file.name, data: parsed.data, summary: parsed.summary } : { name: file.name, error: parsed.error };
-    render();
-  };
+  reader.onload = () => previewImportText(file.name, reader.result);
   reader.onerror = () => {
     state.importPreview = { name: file.name, error: '读文件失败' };
     render();
@@ -1407,8 +1435,9 @@ function renderSettingsView(root) {
       sessionCount: state.historyReady && !state.historyError ? state.history.length : null,
       persisted: state.persisted,
       backupText: backupStatusText(),
-      wakeLockSupported: wakeLockSupported(),
+      wakeLockSupported: wakeLockSupported() || native.available,
       audioSupported: audioSupported(),
+      nativeAvailable: native.available,
     },
     importPreview: state.importPreview,
     hkPreview: state.hkPreview,
@@ -1416,6 +1445,7 @@ function renderSettingsView(root) {
     onChange: applySettings,
     onExport: exportBackup,
     onImportFile: previewImport,
+    onImportNative: () => native.importFile(),
     onImportApply: applyImport,
     onImportCancel: () => {
       state.importPreview = null;
@@ -1439,8 +1469,12 @@ function renderSettingsView(root) {
 // 屏幕常亮：只在训练页、设置开着、页面可见时持有；离开训练页或切后台就放掉
 function syncWakeLock() {
   const want = state.settings.keepScreenAwake && currentView() === 'train' && Boolean(state.trainTemplate) && document.visibilityState === 'visible';
-  setWakeLock(want);
+  if (native.available) {
+    if (want !== lastKeepAwake) native.keepAwake(want); // App 版用 isIdleTimerDisabled，更稳；没变不重发
+    lastKeepAwake = want;
+  } else setWakeLock(want);
 }
+let lastKeepAwake = null;
 
 // 首次启动：选"载入内置计划"或"从空白计划开始"，选了就写库
 async function choosePlan(plan) {
@@ -1488,6 +1522,148 @@ function render() {
     }
   }
   syncWakeLock();
+  syncNative();
+}
+
+/* ---------- App 壳（iOS）：通知、状态、命令；网页版里这些都是空操作 ---------- */
+
+let lastRestTimerKey = null;
+let lastStateKey = null;
+let lastRemindersKey = null;
+
+// 组间休息到点的本地通知：按 restStartedAt + 参考秒数排，撤销 / 重置 / 再记一组时重排，结束 / 放弃时取消
+function syncRestTimer() {
+  const s = state.session;
+  const t = s ? findTemplate(s.templateId) : null;
+  let key = 'clear';
+  let payload = null;
+  if (s && !s.finishedAt && s.restStartedAt != null && t) {
+    const ref = restReferenceSeconds(s, t, state.settings.defaultRestSeconds);
+    const at = s.restStartedAt + ref * 1000;
+    if (at > Date.now()) {
+      const base = s.lastSetExerciseId ? findExercise(t, s.lastSetExerciseId) : null;
+      const entry = s.lastSetExerciseId ? findEntry(s, s.lastSetExerciseId) : null;
+      const ex = base && entry ? effectiveExercise(entry, base) : base;
+      payload = { at, title: '休息到了', body: `${ex ? `${ex.name} · ` : ''}参考 ${formatClock(ref * 1000)}`, sound: state.settings.sound };
+      key = `${at}|${payload.sound}`;
+    }
+  }
+  if (key === lastRestTimerKey) return;
+  lastRestTimerKey = key;
+  if (payload) native.restTimer.set(payload.at, payload.title, payload.body, payload.sound);
+  else native.restTimer.clear();
+}
+
+// 训练日提醒：未来 14 天里的训练 / 有氧 / 打球日，到设定时间发"今天 X · 动作…"
+function syncReminders() {
+  let items = [];
+  if (state.settings.reminderOn && state.plan && !state.firstRun) {
+    const [hh, mm] = state.settings.reminderTime.split(':').map(Number);
+    for (const { d, day } of upcomingDays(state.plan, state.date, 0, 13)) {
+      if (day.kind !== 'strength' && day.kind !== 'cardio' && day.kind !== 'ballOptional') continue;
+      const at = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh, mm).getTime();
+      if (at <= Date.now()) continue;
+      items.push({ id: day.dateKey, date: day.dateKey, hour: hh, minute: mm, title: `今天 ${day.title}`, body: dayDetail(day) });
+    }
+  }
+  const key = JSON.stringify(items);
+  if (key === lastRemindersKey) return;
+  lastRemindersKey = key;
+  if (items.length) native.reminders.set(items);
+  else native.reminders.clear();
+}
+
+// 把当前状态给原生（锁屏卡片 / 快捷指令判断用）
+function syncNativeState() {
+  const s = state.session;
+  const t = s ? findTemplate(s.templateId) : null;
+  const active = s && t && s.activeExerciseId ? findExercise(t, s.activeExerciseId) : null;
+  const st = { inTraining: Boolean(s && !s.finishedAt), template: t ? t.name : null, activeExercise: active ? active.name : null, restRunning: Boolean(s && !s.finishedAt && s.restStartedAt != null) };
+  const key = JSON.stringify(st);
+  if (key === lastStateKey) return;
+  lastStateKey = key;
+  native.state(st);
+}
+
+function syncNative() {
+  if (!native.available) return;
+  syncRestTimer();
+  syncReminders();
+  syncNativeState();
+}
+
+// 进行中动作之后的下一个待做动作
+function nextPendingExercise(session, template) {
+  const open = orderedEntries(session).filter((e) => (e.status === 'pending' || e.status === 'active') && findExercise(template, e.exerciseId));
+  const i = open.findIndex((e) => e.exerciseId === session.activeExerciseId);
+  const cand = [...open.slice(i + 1), ...open.slice(0, Math.max(i, 0))].find((e) => e.status === 'pending');
+  return cand ? cand.exerciseId : null;
+}
+
+// 原生发来的命令（快捷指令 / 轻点背面 / 动作按钮 / Siri）：completeSet | resetRest | startTraining | nextExercise
+// detail.at：命令真正发生的时间（App 没活着时排队补发的，用当时的时间戳记组）
+function handleNativeCommand(name, detail) {
+  const now = detail && Number.isFinite(detail.at) ? detail.at : Date.now();
+  if (name === 'startTraining') {
+    location.hash = '#train';
+    return;
+  }
+  const s = state.session;
+  const template = s ? findTemplate(s.templateId) : null;
+  if (!s || s.finishedAt || !template) {
+    native.haptic('warning');
+    return;
+  }
+  if (name === 'completeSet') {
+    const id = s.activeExerciseId;
+    const entry = id ? findEntry(s, id) : null;
+    const base = id ? findExercise(template, id) : null;
+    if (!entry || !base) {
+      native.haptic('warning'); // 没有进行中的动作，不知道记给谁
+      return;
+    }
+    const ex = effectiveExercise(entry, base);
+    const pre = prefillFor(entry, ex, lastFor(entry));
+    const needWeight = !(ex.load || {}).bodyweight;
+    if ((needWeight && pre.weight == null) || pre.reps == null) {
+      native.haptic('warning'); // 首次做、重量还没填过：得回到屏幕上填
+      return;
+    }
+    state.inputs = null;
+    state.session = { ...completeSet(s, template, id, now, { weight: needWeight ? pre.weight : null, reps: pre.reps, autoStartRest: state.settings.autoStartRest }), pendingInput: null };
+    persistSession(state.session);
+    native.haptic('success');
+    render();
+    return;
+  }
+  if (name === 'resetRest') {
+    const next = resetRest(s, now);
+    if (next !== s) {
+      state.session = next;
+      persistSession(next);
+    }
+    native.haptic('light');
+    render();
+    return;
+  }
+  if (name === 'nextExercise') {
+    const nextId = nextPendingExercise(s, template);
+    if (!nextId) {
+      native.haptic('warning');
+      return;
+    }
+    state.inputs = null;
+    state.session = selectExercise(s, template, nextId);
+    persistSession(state.session);
+    native.haptic('light');
+    render();
+  }
+}
+
+function handleNativeEvent(detail) {
+  if (detail.type === 'import.result' && typeof detail.text === 'string') previewImportText(detail.name || '备份.json', detail.text);
+  if (detail.type === 'foreground') document.dispatchEvent(new Event('visibilitychange')); // 和回前台一样：重算秒表、换日期
+  if (detail.type === 'hello') render(); // 能力列表到了，设置页按它画
 }
 
 function renderView() {
@@ -1650,8 +1826,15 @@ async function main() {
   watchRestVisibility();
   if (!isTest) watchDayChange();
   window.addEventListener('hashchange', render);
+  native.onCommand(handleNativeCommand);
+  native.onEvent(handleNativeEvent);
+  native.ready();
 }
 
 setStatus(`v${APP_VERSION}`);
 main();
-window.addEventListener('load', registerServiceWorker);
+// App 壳里网页文件本来就在本地，不注册 Service Worker
+window.addEventListener('load', () => {
+  if (native.available) setStatus(`v${APP_VERSION} · App`);
+  else registerServiceWorker();
+});

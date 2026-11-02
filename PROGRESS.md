@@ -24,6 +24,7 @@
 - 2026-10-24：结束训练的汇总表单（spec 3.2）：总组数、用时、每个动作的状态 / 组数 / 最佳组，"保存并结束"才写库，"继续训练"回去接着练。**spec 的功能项全部完成。**
 - 2026-10-25：真机反馈两条：连点 ± 按钮页面放大缩小（iOS 双击缩放）→ 全局 touch-action: manipulation；数值要能手动输入任意数（器械档位不是 1 / 2.5）→ step="any"，± 只在当前值上加减不再对齐档位。
 - 2026-10-25：Apple Health 的打球 / 二区 / 散步可以同步进来：手机上用快捷指令导出"运动记录.txt"（搭建步骤 docs/shortcut-apple-health.md），设置页"导入 Apple Health 运动记录"选文件 → 预览每条"记为"→ 入库，自动去重。
+- 2026-11-02：iOS App 的网页端部分做完（native.js 桥接、组间通知调用点、训练日提醒设置、原生命令处理、导出导入先问原生）；PWA 版没原生时全是空操作。用户决定不做耳机键，组间提示靠本地通知。
 - 2026-11-02：写了 iOS App 方案 `docs/ios-app-plan.md`：Swift + WKWebView 壳复用全部网页代码，原生只做桥接、本地通知（组间到点 / 训练日）、App Intents（轻点背面 / 动作按钮 / Siri 完成一组）、可选的耳机媒体键（会接管播放、和听歌互斥）、原生导出导入；TestFlight 分发；8 步实施各带验收。
 - 2026-11-02：哑铃动作档位 2.5 lb（用户要求）：坐姿肩推、侧平举、三头单手站姿哑铃、单臂哑铃划船、肱二弯举（两个拉日）、弓步走、锤式弯举。
 - 2026-11-02：动作可设"档位"（load.step）：训练页 ± 按档位加减、进阶提示按档位；引体 / 双杠的助力按用户机器改成 61 lb、一格 8.5 lb；助力动作的显示自动带"助力"，不再靠手写 label。
@@ -51,6 +52,8 @@
 - 功能项已做完；后面按"以后再说"和真机使用中的反馈来。
 
 ## 日志（每步追加一行：日期 · 做了什么 · 验收结果 · 下一步）
+
+- 2026-11-02 · iOS App 网页端（docs/ios-app-plan.md 第 7 节）：native.js（每次调用重新找 window.webkit.messageHandlers.native，没有就返回 false；restTimer.set/clear、reminders.set/clear、keepAwake、haptic、exportFile、importFile、state、ready；原生入口 window.nativeEvent：hello 记能力、command 分发给 onCommand、其他给 onEvent）、app.js（有原生时不注册 SW、状态栏"· App"；render 末尾 syncNative：syncRestTimer 按 session.restStartedAt + 参考秒数排通知、body"引体向上 · 参考 02:30"、带 sound 设置，同一条不重发，没在休息 / 已结束就 clear；syncReminders 开着时从今天起 14 天的力量 / 有氧 / 打球日按设定时间排、过了的不排，内容"今天 X"+ 动作名；syncNativeState；keepAwake 走原生且去重；完成一组 haptic light，到参考时长 haptic success 且 App 版不用 WebAudio；handleNativeCommand：completeSet 按预填值记进行中动作一组（带 at 时间戳；没有进行中动作、首次做重量没填、次数空 → warning 震动不记）、resetRest、startTraining、nextExercise（orderedEntries 里进行中之后的第一个待做）；import.result → previewImportText；foreground → 派发 visibilitychange；upcomingDays / dayDetail 抽出来给接下来 7 天和提醒共用）、settings.js（reminderOn / reminderTime 'HH:MM'）、settings-view.js（训练日提醒开关 + 时间，没原生时禁用并说明；提示音说明按环境；导入按钮先问 onImportNative）、style.css、sw.js v41（+native.js）、docs 去掉耳机键 · 决定：不做耳机键（用户）；App 版的"提示音"开关 = 通知带不带声音；命令补发靠原生带 at · 验收通过（只用浏览器实测，注入假 window.webkit 收消息）：网页版设置页提醒项禁用、状态栏正常；注入后一次 render 发 keepAwake / restTimer.clear / reminders.clear / state；开提醒 → reminders.set 12 条（11/2 拉日 · 正手 … 11/14 推日，休息日不在）、关 → clear；记一组 → restTimer.set 的 at = restStartedAt + 150000、body"引体向上 · 参考 02:30"、state inTraining/activeExercise 正确；撤销 → clear；命令 completeSet → 1/3 + success 震动 + 新 restTimer.set，resetRest → light + 重排，nextExercise → 切到坐姿正手宽距划船，再 completeSet 记 110×…；放弃 → clear；导出 → export 消息带文件名和完整 JSON；导入按钮 → import 消息，import.result 回传后预览卡出现；startTraining → #train；无报错 · Mac 上按方案第 1 步起
 
 - 2026-11-02 · 档位 + 助力机器数值（用户发来机器配重片照片：lb 列 10 / 18.5 / 27 / 35.5 / 44 / 52.5 / 61 / 69.5 / 78 / 86.5 / 95 / 103.5 / 112，一格 8.5 lb，插销在 61）：动作 load 加可选 step；train-view 重量框 ± 用 lbToDisplay(step)（kg 模式 3.9）；progression incrementFor 有 step 时助力 −step、其他 +step；plan-edit exerciseFromForm 写 load.step；plan-view 动作表单加"档位"框（和休息秒数同一行，校验 >0 或留空）；schedule.js formatLoad 助力动作自动显示"61 lb 助力"；training-plan.json 引体（两个拉日）和双杠都改成 61、step 8.5，去掉手写 label，备注列出档位；sw.js v39 · 决定：61 取自照片里插销的位置，不确定是引体还是双杠用的，用户在计划里改；kg 显示按换算（27.7），和机器上的 kg 列（28.5）略有出入 · 验收通过（只用浏览器实测，重载内置后 11/2 拉日）：首页"61 lb 助力"，训练页"助力 lb"预填 61、+ 得 69.5、− − 得 52.5、按钮无障碍标签"助力 lb 加 8.5"；计划编辑双杠：重量 61、档位 8.5、助力勾上，档位填 −1 报错，8.5 保存后库里 load.step 8.5；无报错 · 真机复验
 

@@ -1158,6 +1158,12 @@ input.num:focus {
   font-size: 13px;
 }
 
+.settings-time {
+  width: 120px;
+  min-height: 44px;
+  text-align: center;
+}
+
 .settings-num {
   width: 96px;
   min-height: 44px;

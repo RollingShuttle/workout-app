@@ -9,7 +9,7 @@
 - 用 **Swift + WKWebView 壳**（自己写，不用 Capacitor）。网页部分一行不改地打进 App，原生只写四小块：桥接、通知、App Intents、耳机媒体键。总共几百行 Swift。
 - 网页端只加一个很薄的 `native.js`，PWA 版和 App 版共用同一套代码，GitHub Pages 继续能用。
 - 分发用 **TestFlight**（需要付费的 Apple Developer Program，99 美元 / 年）。免费账号只能用 Xcode 直装，签名 7 天过期，不适合天天用的 App。
-- 耳机键有个硬限制（见 4.3）：iOS 只把耳机键事件给"正在播放"的 App。要收到耳机键，App 得自己播一段静音音轨并接管播放，这会**停掉你正在听的音乐 / 播客**。所以免提控制的主方案是 **轻点背面 / 动作按钮 / Siri（App Intents）**，耳机键做成设置里的开关，想用再开。
+- 耳机键有个硬限制（见 4.3）：iOS 只把耳机键事件给"正在播放"的 App。要收到耳机键，App 得自己播一段静音音轨并接管播放，这会**停掉你正在听的音乐 / 播客**。**用户决定不做耳机键**（2026-11-02），免提控制走 **轻点背面 / 动作按钮 / Siri（App Intents）**；必须有的是组间到点的提示（本地通知带声音）。
 
 ## 2. 方案对比
 
@@ -72,7 +72,6 @@ workout-app/
 | `reminders.clear` | | |
 | `keepAwake` | `on` | 屏幕常亮（`UIApplication.shared.isIdleTimerDisabled`） |
 | `haptic` | `kind`: `light` / `success` / `warning` | 震动反馈 |
-| `remote.enable` | `on` | 开关耳机键接管（见 4.3） |
 | `export` | `name`, `json` | 弹分享面板 |
 | `import` | | 弹文件选择器，选完原生发 `import.result` |
 | `state` | `inTraining`, `activeExercise`, `restRunning` | 网页把当前状态同步给原生，App Intents 和锁屏"正在播放"卡用 |
@@ -135,14 +134,8 @@ export const native = {
   - Apple Watch 的快捷指令 App 也能点。
 - 反馈：命令执行后 `haptic('success')` 震一下，锁屏通知"第 2 组已记，休息开始"（可选，设置里开）。
 
-**B. 耳机媒体键（可选，开关在设置里）**
-- 打开后：`AVAudioSession` 设 `.playback`，`AVAudioPlayer` 循环播放 bundle 里的 1 秒静音 m4a，`MPNowPlayingInfoCenter` 显示"训练中 · 斜上卧推 第 2 组"（锁屏和控制中心能看到），注册 `MPRemoteCommandCenter`：
-  - 播放 / 暂停（捏一下）→ `completeSet`
-  - 下一曲（捏两下）→ `resetRest`
-  - 上一曲（捏三下）→ `nextExercise`（切到下一个待做动作，网页需要加这个小功能）
-- 关掉或结束训练时停播、释放音频会话，把播放权还给别的 App。
-- 要加 Background Modes → Audio，否则锁屏后静音播放会被停掉。
-- 设置页说明写清楚："开着的时候不能同时听歌"。
+**B. 耳机媒体键 —— 不做（用户决定）**
+- 原因就是上面的硬限制：接管播放会停掉正在听的音乐。以后要做的话：`AVAudioSession` `.playback` + 循环静音 m4a + `MPNowPlayingInfoCenter` / `MPRemoteCommandCenter`（播放暂停 → completeSet，下一曲 → resetRest，上一曲 → nextExercise），Background Modes → Audio，设置里做开关并说明互斥。
 
 ### 4.4 其他原生小功能
 
@@ -195,9 +188,7 @@ export const native = {
 - 网页：`command` 事件处理；`nextExercise` 小功能。
 - 验收：轻点背面两下，训练页的进行中动作多一组、秒表归零、震一下；锁屏状态下敲两下也记上（回到前台看到）；"嘿 Siri 完成一组"同样；没有进行中动作时不记并提示。
 
-**第 6 步 · 耳机媒体键（可选）**
-- `RemoteControl.swift`：静音音轨、Now Playing 信息、三个命令；设置页开关和说明；Background Modes → Audio。
-- 验收：开着时 AirPods 捏一下记一组、捏两下重置；锁屏显示"训练中 · 动作名"；关掉后 Spotify 能正常播放并拿回耳机键。
+**第 6 步 · 耳机媒体键** —— 不做（见 4.3 B）。
 
 **第 7 步 · 导出导入走原生**
 - `export` 弹分享面板存到"文件"；`import` 文件选择器。
@@ -207,17 +198,16 @@ export const native = {
 - Archive → 上传 → TestFlight 内部测试加两个 Apple ID。
 - 验收：两台手机从 TestFlight 装上，各自首次启动页，数据互不可见。
 
-## 7. 网页端可以先在 Windows 上做的部分
+## 7. 网页端的部分（2026-11-02 已在 Windows 上做完，v0.22.0）
 
-这些不依赖 Mac，可以现在就做，PWA 版不受影响：
+PWA 版不受影响（没有原生时全是空操作）：
 
-1. `native.js` 骨架 + `app.js` 接入（SW 注册跳过、`onCommand` 处理 `completeSet` / `resetRest` / `startTraining` / `nextExercise`、`state` 同步）。
-2. 组间通知的调用点（`restTimer.set/clear`）——PWA 里是空操作。
-3. 设置页：训练提醒时间 + 开关、耳机键开关（原生不在时显示"App 版才有"并禁用）。
-4. "下一个动作"命令：把进行中动作切到下一个待做动作。
-5. 导出 / 导入先问 `native.exportFile / importFile`，返回 false 再走现在的 `navigator.share` / `<input type=file>`。
+1. `native.js`：桥接层；`window.webkit.messageHandlers.native` 存在才发消息；原生回调入口 `window.nativeEvent(detail)`。
+2. `app.js`：有原生时不注册 Service Worker；`syncNative()` 在每次 render 后跑——组间通知 `restTimer.set/clear`（按 restStartedAt + 参考秒数，重复不重发）、训练日提醒 `reminders.set`（未来 14 天）、`state` 同步；命令处理 `completeSet`（按预填值记进行中动作的一组，首次做重量没填过则拒绝并 warning 震动）/ `resetRest` / `startTraining` / `nextExercise`；`import.result` → 预览；`foreground` → 重算秒表；常亮走 `keepAwake`，震动 `haptic`，App 版不用 WebAudio 提示音（通知出声）。
+3. 设置页：训练日提醒（时间 + 开关，网页版禁用并说明）；"提示音"在 App 版的说明改成"通知带声音"。
+4. 导出先问 `native.exportFile`，导入按钮先问 `native.importFile`。
 
-做完这些，Mac 上的工作就只剩 Swift 那几百行和 Xcode 配置。
+Mac 上要做的只剩 Swift（`Bridge` 按 3.4 的协议、`Notifications`、`Intents`、分享 / 文件选择器）和 Xcode 配置。原生发命令时带 `at`（毫秒时间戳），排队补发的也准。
 
 ## 8. 风险与注意
 

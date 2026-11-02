@@ -77,7 +77,7 @@ function toggleRow(id, label, checked, onChange, { disabled = false, note } = {}
   ]);
 }
 
-export function renderSettings(root, { settings, version, info, isTest, importPreview, hkPreview, saveError, onChange, onExport, onImportFile, onImportApply, onImportCancel, onHkFile, onHkChoice, onHkImport, onHkCancel, onReloadBuiltin, onClearAll, onBack }) {
+export function renderSettings(root, { settings, version, info, isTest, importPreview, hkPreview, saveError, onChange, onExport, onImportFile, onImportNative, onImportApply, onImportCancel, onHkFile, onHkChoice, onHkImport, onHkCancel, onReloadBuiltin, onClearAll, onBack }) {
   const unitBtn = (u) =>
     el('button', { class: `seg-btn${settings.unit === u ? ' seg-btn-on' : ''}`, type: 'button', 'aria-pressed': settings.unit === u ? 'true' : 'false', onclick: () => onChange({ unit: u }) }, u);
   const persistedText = info.persisted === true ? '已获持久存储' : info.persisted === false ? '未获持久存储（系统空间紧张时可能被清）' : '持久存储：此浏览器不支持';
@@ -116,9 +116,25 @@ export function renderSettings(root, { settings, version, info, isTest, importPr
       ]),
       el('p', { class: 'muted settings-note', text: '动作没写休息秒数时用这个（0–600）' }),
       toggleRow('set-sound', '到参考休息时长时响一声', settings.sound, (v) => onChange({ sound: v }), {
-        disabled: !info.audioSupported,
-        note: info.audioSupported ? '只在 App 打开着的时候响；静音键打开时可能无声' : '此浏览器不支持',
+        disabled: !info.audioSupported && !info.nativeAvailable,
+        note: info.nativeAvailable ? 'App 版：组间到点的通知带声音，锁屏也响' : info.audioSupported ? '只在 App 打开着的时候响；静音键打开时可能无声' : '此浏览器不支持',
       }),
+      el('div', { class: 'settings-row settings-row-inline' }, [
+        el('label', { class: 'plan-check', for: 'set-reminder' }, [
+          el('input', { type: 'checkbox', id: 'set-reminder', checked: settings.reminderOn, disabled: !info.nativeAvailable, onchange: (e) => onChange({ reminderOn: e.target.checked }) }),
+          el('span', { text: '训练日提醒' }),
+        ]),
+        el('input', {
+          class: 'sheet-text settings-time',
+          id: 'set-reminder-time',
+          type: 'time',
+          value: settings.reminderTime,
+          disabled: !info.nativeAvailable,
+          'aria-label': '提醒时间',
+          onchange: (e) => { if (/^\d{2}:\d{2}$/.test(e.target.value)) onChange({ reminderTime: e.target.value }); },
+        }),
+      ]),
+      el('p', { class: 'muted settings-note', text: info.nativeAvailable ? '训练日（力量 / 有氧 / 打球）到点发通知，内容是当天的安排；按调课和轮流算，提前排 14 天' : '只有 App 版能发通知；网页版这里不可用' }),
       toggleRow('set-awake', '训练时屏幕常亮', settings.keepScreenAwake, (v) => onChange({ keepScreenAwake: v }), {
         disabled: !info.wakeLockSupported,
         note: info.wakeLockSupported ? '只在训练页生效；常亮一小时会明显耗电。秒表按时间戳算，锁屏不影响准确' : '此浏览器不支持屏幕常亮',
@@ -141,7 +157,7 @@ export function renderSettings(root, { settings, version, info, isTest, importPr
             e.target.value = '';
           },
         }),
-        btn('导入 JSON 备份', () => root.querySelector('#set-import').click()),
+        btn('导入 JSON 备份', () => { if (!(onImportNative && onImportNative())) root.querySelector('#set-import').click(); }), // App 版先走原生文件选择器
       ]),
       // Apple Health 运动记录导入（hkCard / onHkFile…）暂不展示：系统快捷指令读不到体能训练，用户决定先不做。
       // 要重新打开：把 #set-hk 文件框、"导入 Apple Health 运动记录"按钮和 hkCard(hkPreview, …) 加回这里即可。

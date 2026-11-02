@@ -8,7 +8,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   autoStartRest: true, // 完成一组后自动开始秒表
   defaultRestSeconds: 90, // 动作没写 restSeconds 时的参考休息
   keepScreenAwake: false, // 训练模式下屏幕常亮（耗电，默认关）
-  sound: false, // 到参考时长时响一声（默认关）
+  sound: false, // 到参考时长时响一声（默认关）；App 版 = 组间通知带不带声音
+  reminderOn: false, // 训练日提醒（只有 App 版能发通知）
+  reminderTime: '18:30', // 'HH:MM'
 });
 
 export function normalizeSettings(raw) {
@@ -20,6 +22,8 @@ export function normalizeSettings(raw) {
     defaultRestSeconds: Number.isInteger(rest) && rest >= 0 && rest <= 600 ? rest : DEFAULT_SETTINGS.defaultRestSeconds,
     keepScreenAwake: Boolean(r.keepScreenAwake),
     sound: Boolean(r.sound),
+    reminderOn: Boolean(r.reminderOn),
+    reminderTime: /^\d{2}:\d{2}$/.test(r.reminderTime || '') ? r.reminderTime : DEFAULT_SETTINGS.reminderTime,
   };
 }
 
