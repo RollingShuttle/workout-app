@@ -41,12 +41,35 @@ export function upsertOverride(plan, date, assign) {
   if (entry.fallback) o.fallback = entry.fallback;
   if (entry.ballOptional) o.ballOptional = true;
   if (entry.note) o.note = entry.note;
+  if (assign.rotate) o.rotate = true; // 顺延 / 压缩挪过来的轮流训练日：仍按上一次做的决定正手 / 反手
+  if (assign.batch) o.batch = assign.batch; // 同一次"不练"产生的一批调课，撤销时一起删
+  if (assign.prev) o.prev = assign.prev; // 覆盖掉的原调课（如过渡周的），撤销时放回去
   const others = (plan.overrides || []).filter((x) => x.date !== date);
   return { ...plan, overrides: [...others, o].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)) };
 }
 
 export function removeOverride(plan, date) {
   return { ...plan, overrides: (plan.overrides || []).filter((x) => x.date !== date) };
+}
+
+// 撤销调课：删掉这些记录，被它们覆盖掉的原调课（prev）放回去。pick(o) 决定哪些要撤
+function restoreOverrides(plan, pick) {
+  const keep = [];
+  for (const o of plan.overrides || []) {
+    if (!pick(o)) keep.push(o);
+    else if (o.prev) keep.push(o.prev);
+  }
+  keep.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  return { ...plan, overrides: keep };
+}
+
+export function undoOverrideDate(plan, date) {
+  return restoreOverrides(plan, (o) => o.date === date);
+}
+
+// 同一批（同一次"不练"产生）的全部调课一起撤
+export function removeOverrideBatch(plan, batch) {
+  return restoreOverrides(plan, (o) => o.batch === batch);
 }
 
 export function setTemplateEnabled(plan, templateId, enabled) {

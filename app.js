@@ -60,10 +60,10 @@ import { setWakeLock, wakeLockSupported, unlockAudio, beep, audioSupported } fro
 import { buildBackup, backupFileName, parseBackup, normalizeBackupMeta, backupReminder, finishedTrainingCount, BACKUP_REMIND_DAYS, BACKUP_SNOOZE_DAYS } from './backup.js';
 import { renderSettings } from './settings-view.js';
 import { parseWorkoutsFile, guessKind, conflictWith, sessionFromItem } from './hk-import.js';
-import { applySkip, canSkip } from './skip-day.js';
+import { applySkip, setDayTo, undoOverride } from './skip-day.js';
 import { renderSkipSheet } from './skip-view.js';
 
-const APP_VERSION = '0.20.1';
+const APP_VERSION = '0.21.0';
 const BACKUP_META_KEY = 'backup';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
@@ -432,8 +432,8 @@ function renderHome(root, day) {
       : null,
     day.kind !== 'strength' ? el('div', { class: 'home-actions home-actions-row' }, activityButtons(day)) : null,
     state.historyReady ? postStrengthCardioButton(day, todayKey) : null,
-    canSkip(day) && !resume
-      ? el('div', { class: 'home-actions home-actions-row' }, [el('button', { class: 'btn-secondary link-btn skip-today', type: 'button', onclick: () => openSkipSheet(todayKey) }, '今天不练')])
+    !resume
+      ? el('div', { class: 'home-actions home-actions-row' }, [el('button', { class: 'btn-secondary link-btn skip-today', type: 'button', onclick: () => openSkipSheet(todayKey) }, '调整今天')])
       : null,
     renderWeekStrip({ summary, todayKey, ballCount, limit: BALL_WEEKLY_LIMIT }),
     renderUpcoming(plan, date),
@@ -464,7 +464,7 @@ function openSkipSheet(dateKey) {
 function renderSkipSheetFor(root, dateKey) {
   const date = parseDateKey(dateKey);
   const day = date ? resolveDay(state.plan, date) : null;
-  if (!day || !canSkip(day)) {
+  if (!day) {
     state.skipSheet = null;
     return;
   }
@@ -473,7 +473,10 @@ function renderSkipSheetFor(root, dateKey) {
     date,
     day,
     onApply: (mode, extra) => {
-      const r = applySkip(state.plan, date, mode, extra);
+      let r;
+      if (mode === 'set') r = setDayTo(state.plan, date, extra.choice);
+      else if (mode === 'undo') r = undoOverride(state.plan, date);
+      else r = applySkip(state.plan, date, mode, { ...extra, now: Date.now() });
       if (r.error) {
         window.alert(r.error);
         return;
@@ -530,6 +533,7 @@ function markBackedUp(sessions, now) {
 // 今天已有这对里的记录（草稿或已完成）就沿用它，重进页面不会换。历史没读到时先按排程上的那个。
 function withRotation(day, history, todayKey) {
   if (day.kind !== 'strength' || !day.day.alternateWith) return day;
+  if (day.source === 'override' && !day.rotate) return day; // 手动指定的"拉日 · 正手"就是正手，不轮
   const other = findTemplate(day.day.alternateWith);
   if (!other || other.enabled === false) return day;
   const pair = [day.day.id, other.id];
@@ -596,7 +600,7 @@ function renderUpcoming(plan, date) {
             el('span', { class: 'upcoming-date', text: `${label(i, d)} · ${d.getMonth() + 1}月${d.getDate()}日` }),
             el('span', { class: 'upcoming-title', text: day.title }),
             day.source === 'override' ? el('span', { class: 'tag', text: '调课' }) : null,
-            canSkip(day) ? el('button', { class: 'btn-secondary upcoming-skip', type: 'button', 'aria-label': `${label(i, d)} 不练`, onclick: () => openSkipSheet(day.dateKey) }, '不练') : null,
+            el('button', { class: 'btn-secondary upcoming-skip', type: 'button', 'aria-label': `调整 ${label(i, d)}`, onclick: () => openSkipSheet(day.dateKey) }, '调整'),
           ]),
           detail(day) ? el('div', { class: 'upcoming-detail', text: detail(day) }) : null,
           day.note ? el('div', { class: 'upcoming-detail', text: day.note }) : null,

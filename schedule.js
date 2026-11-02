@@ -95,6 +95,8 @@ export function resolveDay(plan, date) {
     disabledTemplate: null,
     note,
     problems,
+    rotate: Boolean(override && override.rotate), // 调课来的轮流训练日是否仍按上一次决定正手 / 反手（手动指定的不轮）
+    batch: override && override.batch ? override.batch : null, // 这条调课属于哪一批（撤销时一起删）
   };
 
   const fallbackCardio = fallbackRef && fallbackRef.type === 'cardio' ? findCardioTemplate(plan, fallbackRef.id) : null;

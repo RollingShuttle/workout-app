@@ -3,7 +3,13 @@
 //   顺延：这天改成休息，后面的训练 / 有氧依次往后挪一天，打球日和休息日位置不动，挪到下一个休息日为止（那个休息日被占掉）。
 //   压缩打球日：这天改成休息，挑一个之后的可选打球日，那天改成这天原本的训练（那天不打球）。
 import { resolveDay, toDateKey, WEEKDAY_LABELS } from './schedule.js';
-import { upsertOverride } from './plan-edit.js';
+import { upsertOverride, undoOverrideDate, removeOverrideBatch } from './plan-edit.js';
+
+// 写调课时把被覆盖的原调课带上（prev），撤销时放回去；原计划里没有就不带
+function keepPrev(plan, dateKey, assign) {
+  const old = (plan.overrides || []).find((o) => o.date === dateKey);
+  return old ? { ...assign, prev: old } : assign;
+}
 
 const DAY_MS = 86400000;
 export const SHIFT_HORIZON_DAYS = 14;
@@ -18,7 +24,8 @@ export function fmtDay(date) {
 
 // 解析结果 → upsertOverride 用的安排对象；安排有误的返回 null
 export function assignmentOfDay(day) {
-  if (day.kind === 'strength') return { type: 'day', id: day.day.id, fallbackId: null, ballOptional: false, note: '' };
+  // 轮流的训练日挪到别的日子仍然轮流（rotate），手动指定的才固定
+  if (day.kind === 'strength') return { type: 'day', id: day.day.id, fallbackId: null, ballOptional: false, note: '', rotate: Boolean(day.day.alternateWith && (day.source !== 'override' || day.rotate)) };
   if (day.kind === 'cardio') return { type: 'cardio', id: day.cardio.id, fallbackId: null, ballOptional: false, note: '' };
   if (day.kind === 'ballOptional') return { type: 'ballOptional', id: null, fallbackId: day.fallback ? day.fallback.id : null, ballOptional: false, note: '' };
   if (day.kind === 'rest') return { type: 'rest', id: null, fallbackId: null, ballOptional: Boolean(day.ballOptional), note: '' };
@@ -66,12 +73,15 @@ export function upcomingBallDays(plan, date) {
 }
 
 // mode: 'skip' | 'shift' | 'compress'（compress 要带 ballDateKey）。返回 { plan, summary } 或 { error }
-export function applySkip(plan, date, mode, { ballDateKey } = {}) {
+// 同一次处理产生的调课带同一个 batch（now 用来生成），撤销时一起删
+export function applySkip(plan, date, mode, { ballDateKey, now = 0 } = {}) {
   const day = resolveDay(plan, date);
   if (!canSkip(day)) return { error: '这天本来就是休息' };
   const dateKey = toDateKey(date);
+  const batch = `skip-${dateKey}-${now}`;
+  const rest = (note) => ({ ...REST(note), batch });
   if (mode === 'skip') {
-    return { plan: upsertOverride(plan, dateKey, REST(`不练（跳过 ${day.title}）`)), summary: `${fmtDay(date)} 改成休息，后面不变` };
+    return { plan: upsertOverride(plan, dateKey, keepPrev(plan, dateKey, rest(`不练（跳过 ${day.title}）`))), summary: `${fmtDay(date)} 改成休息，后面不变` };
   }
   if (mode === 'shift') {
     const { moves, consumedRest } = shiftPreview(plan, date);
@@ -80,9 +90,9 @@ export function applySkip(plan, date, mode, { ballDateKey } = {}) {
     // 先按原计划把每天的安排算好，再写 overrides，免得写一半影响后面的解析
     const assigns = moves.map((m) => ({ to: toDateKey(m.to), assign: assignmentOfDay(resolveDay(plan, m.from)) }));
     for (const a of assigns) {
-      if (a.assign) next = upsertOverride(next, a.to, a.assign);
+      if (a.assign) next = upsertOverride(next, a.to, keepPrev(plan, a.to, { ...a.assign, batch }));
     }
-    next = upsertOverride(next, dateKey, REST(`不练（${day.title} 顺延）`));
+    next = upsertOverride(next, dateKey, keepPrev(plan, dateKey, rest(`不练（${day.title} 顺延）`)));
     const last = moves[moves.length - 1];
     return {
       plan: next,
@@ -94,11 +104,56 @@ export function applySkip(plan, date, mode, { ballDateKey } = {}) {
     if (!ball) return { error: '先选一个打球日' };
     const assign = assignmentOfDay(day);
     if (!assign) return { error: '这天的安排有误，没法挪' };
-    let next = upsertOverride(plan, ball.dateKey, { ...assign, note: `${day.title} 从 ${fmtDay(date)} 压缩过来，这天不打球` });
-    next = upsertOverride(next, dateKey, REST(`不练（${day.title} 压缩到 ${ball.label}）`));
+    let next = upsertOverride(plan, ball.dateKey, keepPrev(plan, ball.dateKey, { ...assign, batch, note: `${day.title} 从 ${fmtDay(date)} 压缩过来，这天不打球` }));
+    next = upsertOverride(next, dateKey, keepPrev(plan, dateKey, rest(`不练（${day.title} 压缩到 ${ball.label}）`)));
     return { plan: next, summary: `${fmtDay(date)} 改成休息，${ball.label} 不打球改练 ${day.title}` };
   }
   return { error: '不认识的处理方式' };
+}
+
+/* ---------- 手动改成 / 撤销调课 ---------- */
+
+// 这天可以改成什么：[{ value, label, assign }]。训练日（含轮流的两个都单列，手动指定不轮）、有氧模板、可选打球、休息
+export function dayChoices(plan) {
+  const out = [];
+  for (const t of plan.dayTemplates || []) {
+    if (t.enabled === false) continue;
+    out.push({ value: `day:${t.id}`, label: t.name, assign: { type: 'day', id: t.id, fallbackId: null, ballOptional: false, note: `手动改成 ${t.name}` } });
+  }
+  for (const c of plan.cardioTemplates || []) {
+    if (c.id === 'ball' || c.id === 'walk') continue;
+    out.push({ value: `cardio:${c.id}`, label: c.name, assign: { type: 'cardio', id: c.id, fallbackId: null, ballOptional: false, note: `手动改成 ${c.name}` } });
+  }
+  const fb = (plan.cardioTemplates || []).find((c) => c.id === 'zone2-30') || (plan.cardioTemplates || []).find((c) => c.id !== 'ball' && c.id !== 'walk');
+  out.push({ value: 'ball', label: '可选打球', assign: { type: 'ballOptional', id: null, fallbackId: fb ? fb.id : null, ballOptional: false, note: '手动改成可选打球' } });
+  out.push({ value: 'rest', label: '休息', assign: { type: 'rest', id: null, fallbackId: null, ballOptional: false, note: '手动改成休息' } });
+  return out;
+}
+
+export function setDayTo(plan, date, choiceValue) {
+  const choice = dayChoices(plan).find((c) => c.value === choiceValue);
+  if (!choice) return { error: '先选一个' };
+  const dateKey = toDateKey(date);
+  return { plan: upsertOverride(plan, dateKey, keepPrev(plan, dateKey, choice.assign)), summary: `${fmtDay(date)} 改成 ${choice.label}` };
+}
+
+// 撤销调课：这天属于某一批"不练"就整批撤（返回涉及的日期），否则只撤这一天；被覆盖的原调课放回去
+export function undoOverride(plan, date) {
+  const dateKey = toDateKey(date);
+  const o = (plan.overrides || []).find((x) => x.date === dateKey);
+  if (!o) return { error: '这天没有调课' };
+  if (o.batch) {
+    const dates = (plan.overrides || []).filter((x) => x.batch === o.batch).map((x) => x.date);
+    return { plan: removeOverrideBatch(plan, o.batch), summary: `撤销了 ${dates.length} 天的调课${o.prev ? '，原来的调课放回去了' : '，恢复每周安排'}`, dates };
+  }
+  return { plan: undoOverrideDate(plan, dateKey), summary: `${fmtDay(date)} ${o.prev ? '恢复原来的调课' : '恢复每周安排'}`, dates: [dateKey] };
+}
+
+export function batchDates(plan, date) {
+  const dateKey = toDateKey(date);
+  const o = (plan.overrides || []).find((x) => x.date === dateKey);
+  if (!o) return [];
+  return o.batch ? (plan.overrides || []).filter((x) => x.batch === o.batch).map((x) => x.date) : [dateKey];
 }
 
 /* ---------- 排程规则冲突检查（只检查，不阻止；用户决定） ---------- */
