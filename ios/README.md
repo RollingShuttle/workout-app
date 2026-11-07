@@ -1,0 +1,37 @@
+# iOS 壳（WorkoutShell）
+
+Swift + WKWebView，把仓库根目录的网页原样打进 App。原生只做：本地通知（组间到点、训练日提醒）、App Intents（完成一组 / 重置秒表 / 下一个动作 / 开始训练，可绑轻点背面、动作按钮、Siri）、分享导出 / 文件导入、常亮、震动。方案和协议见 `../docs/ios-app-plan.md`。
+
+## 在 Mac 上第一次跑
+
+1. `git clone`（或 pull）仓库，用 Xcode 打开 `ios/WorkoutShell.xcodeproj`。
+2. 左边选 WorkoutShell 工程 → TARGETS → WorkoutShell → **Signing & Capabilities**：Team 选你的开发者账号；Bundle Identifier 改成你自己的（默认 `com.mikeyang.workout`，重复会签不了）。
+3. 顶部选真机（iPhone 要开"开发者模式"：设置 → 隐私与安全性 → 开发者模式），⌘R 运行。
+4. 第一次装：手机上 设置 → 通用 → VPN 与设备管理 → 信任开发者证书（付费账号用 TestFlight 装的不用这步）。
+
+构建时 `copy-web.sh` 会把根目录的 html / js / css / json / icons 复制进 App 的 `web/`，所以改网页后直接再 ⌘R 就是新版，不用手动拷。
+
+## 看网页控制台
+
+Debug 构建开了 `isInspectable`：Mac 上 Safari → 开发 → 你的 iPhone → 训练 → 点进去就是网页的控制台。
+
+## 验收（对应 docs/ios-app-plan.md 第 6 节）
+
+- 第 1 步：App 打开就是首页；关掉重开记录还在；深色模式跟随；安全区正确。
+- 第 2 步：设置里开常亮，训练页放着不锁屏；完成一组有震动。
+- 第 3 步：完成一组后锁屏，到参考时长锁屏弹通知带声音；撤销后不弹；重置后按新时间弹。
+- 第 4 步：设置里开训练日提醒、时间设成两分钟后，到点收到"今天 推日 · …"。
+- 第 5 步：快捷指令 App → App 快捷指令 → 训练 → 完成一组；设置 → 辅助功能 → 触控 → 轻点背面 → 轻点两下 → 选它。训练页有进行中动作时敲两下背面记一组并震动。
+- 第 7 步：设置 → 导出，分享面板存到"文件"；导入选同一个文件，预览后合并。
+- 第 8 步：Product → Archive → Distribute App → TestFlight；App Store Connect 里加两个测试员。
+
+## 文件
+
+- `WorkoutShell/WorkoutShellApp.swift` 入口；`AppDelegate.swift` 通知代理、回前台
+- `WebView.swift` WKWebView、JS 对话框、外链；`AppSchemeHandler.swift` `app://local/` 静态文件
+- `Bridge.swift` 消息路由、命令队列；`Notifications.swift`；`Intents.swift`；`AppState.swift`；`NativeHelpers.swift` 震动 / 分享 / 导入
+- `copy-web.sh` 构建时复制网页；`Assets.xcassets` 图标
+
+## 不做的
+
+耳机媒体键（iOS 要接管播放才收得到，会停掉正在听的音乐，用户决定不做）。
