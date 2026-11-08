@@ -160,6 +160,5 @@
 ## 以后再说
 
 - Apple Health 的打球 / 二区同步：系统快捷指令读不到体能训练，要做只能走健康 App 全量导出（export.xml 流式解析）或第三方导出 App（Health Auto Export 等）的 JSON；导入的预览 / 映射 / 去重已在 hk-import.js，入口撤掉了（settings-view.js 里有注释说明怎么加回来）。
-- 秒表到参考时长的提示音（默认关）
 - 有氧记录是否手动填 Apple Watch 平均心率和 Zone3+ 时间
 - SW 有新版本时的"立即刷新"按钮
