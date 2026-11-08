@@ -117,7 +117,7 @@ export function renderSettings(root, { settings, version, info, isTest, importPr
       el('p', { class: 'muted settings-note', text: '动作没写休息秒数时用这个（0–600）' }),
       toggleRow('set-sound', '到参考休息时长时响一声', settings.sound, (v) => onChange({ sound: v }), {
         disabled: !info.audioSupported && !info.nativeAvailable,
-        note: info.nativeAvailable ? 'App 版：组间到点的通知带声音，锁屏也响' : info.audioSupported ? '只在 App 打开着的时候响；静音键打开时可能无声' : '此浏览器不支持',
+        note: info.nativeAvailable ? 'App 版：到点总会震动 + 弹通知（锁屏也提醒）；开了这项还响铃，App 开着时静音键也响' : info.audioSupported ? '只在 App 打开着的时候响；静音键打开时可能无声' : '此浏览器不支持',
       }),
       el('div', { class: 'settings-row settings-row-inline' }, [
         el('label', { class: 'plan-check', for: 'set-reminder' }, [

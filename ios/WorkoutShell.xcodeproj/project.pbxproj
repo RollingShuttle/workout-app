@@ -17,6 +17,9 @@
 		B00000000000000000000008 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000008 /* AppState.swift */; };
 		B00000000000000000000009 /* NativeHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000009 /* NativeHelpers.swift */; };
 		B00000000000000000000011 /* BackupStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000013 /* BackupStore.swift */; };
+		B00000000000000000000012 /* RestAlert.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000014 /* RestAlert.swift */; };
+		B00000000000000000000013 /* rest-alert.wav in Resources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000015 /* rest-alert.wav */; };
+		B00000000000000000000014 /* rest-silent.wav in Resources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000016 /* rest-silent.wav */; };
 		B00000000000000000000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000010 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -31,6 +34,9 @@
 		F00000000000000000000008 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		F00000000000000000000009 /* NativeHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHelpers.swift; sourceTree = "<group>"; };
 		F00000000000000000000013 /* BackupStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupStore.swift; sourceTree = "<group>"; };
+		F00000000000000000000014 /* RestAlert.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestAlert.swift; sourceTree = "<group>"; };
+		F00000000000000000000015 /* rest-alert.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "rest-alert.wav"; sourceTree = "<group>"; };
+		F00000000000000000000016 /* rest-silent.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "rest-silent.wav"; sourceTree = "<group>"; };
 		F00000000000000000000010 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F00000000000000000000011 /* WorkoutShell.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WorkoutShell.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F00000000000000000000012 /* copy-web.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "copy-web.sh"; sourceTree = "<group>"; };
@@ -69,7 +75,10 @@
 				F00000000000000000000008 /* AppState.swift */,
 				F00000000000000000000009 /* NativeHelpers.swift */,
 				F00000000000000000000013 /* BackupStore.swift */,
+				F00000000000000000000014 /* RestAlert.swift */,
 				F00000000000000000000010 /* Assets.xcassets */,
+				F00000000000000000000015 /* rest-alert.wav */,
+				F00000000000000000000016 /* rest-silent.wav */,
 			);
 			path = WorkoutShell;
 			sourceTree = "<group>";
@@ -142,6 +151,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				B00000000000000000000010 /* Assets.xcassets in Resources */,
+				B00000000000000000000013 /* rest-alert.wav in Resources */,
+				B00000000000000000000014 /* rest-silent.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -184,6 +195,7 @@
 				B00000000000000000000008 /* AppState.swift in Sources */,
 				B00000000000000000000009 /* NativeHelpers.swift in Sources */,
 				B00000000000000000000011 /* BackupStore.swift in Sources */,
+				B00000000000000000000012 /* RestAlert.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

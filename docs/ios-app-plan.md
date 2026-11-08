@@ -109,7 +109,10 @@ export const native = {
 ### 4.1 组间休息到点提醒（最有价值的一项）
 
 - 网页在"完成一组"时已经有 `restStartedAt` 和参考休息秒数：调用 `native.restTimer.set(restStartedAt + reference * 1000, '休息到了', '斜上卧推 · 参考 02:30')`。撤销 / 重置 / 再完成一组 / 结束训练时 `clear` 再 `set`。
-- 原生用 `UNUserNotificationCenter` 的 `UNTimeIntervalNotificationTrigger`，带声音（`UNNotificationSound.default`）和震动（通知自带）。App 在前台时通知也要显示（`willPresent` 返回 `.banner, .sound`），这样不用再做 WebAudio 提示音，设置里的"提示音"开关在 App 版就控制这条通知有没有声音。
+- 原生用 `UNUserNotificationCenter` 的 `UNTimeIntervalNotificationTrigger`。**2026-11-07 做扎实**（手表作废后用户要求"到点一定要有提示"）：
+  - 通知一定带声音文件：开了提示音放 `rest-alert.wav`（三声上行铃，2.5 秒），关了放 `rest-silent.wav`（静音文件系统照样震动；不带声音的通知不震）。静音键打开时系统只震不响。`interruptionLevel = .timeSensitive`（工程加了 Time Sensitive Notifications 能力才能穿过专注模式，没加就是普通通知）。
+  - App 在前台时（训练中屏幕常亮，这是最常见的情形）：`willPresent` 不放通知声音，交给 `RestAlert.fire`——三下重击 + 一声 success 的震动，开了提示音再用 `AVAudioSession .playback`（`duckOthers`）播同一个 wav，**静音键打开也响**，正在放的音乐压低一下。网页的秒表走到参考时长也会发 `restTimer.fire`，两条路在原生 5 秒内去重，所以通知权限被拒时前台照样有提醒。
+  - 设置里的"提示音"开关在 App 版 = 到点除了震动还响不响铃。
 - 锁屏时通知出来，点它回到 App，网页收到 `foreground` 重算秒表。
 - 权限：第一次点"完成一组"时申请（在手势里），不要在启动时申请。
 

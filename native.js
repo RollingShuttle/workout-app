@@ -38,6 +38,10 @@ export const native = {
     clear() {
       return native.send({ type: 'restTimer.clear' });
     },
+    // 网页的秒表在前台走到参考时长：原生震动 + （sound 时）铃声；和前台到点的通知在原生去重
+    fire(sound) {
+      return native.send({ type: 'restTimer.fire', sound: Boolean(sound) });
+    },
   },
   // 训练日提醒：items = [{ id, date: 'YYYY-MM-DD', hour, minute, title, body }]
   reminders: {

@@ -1,4 +1,4 @@
-// AppDelegate.swift — 通知代理（前台也显示横幅和声音）、回前台时通知网页重算秒表。
+// AppDelegate.swift — 通知代理（前台也显示横幅；组间到点在前台交给 RestAlert 出声和震动）、回前台时通知网页重算秒表。
 import UIKit
 import UserNotifications
 
@@ -11,8 +11,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         return true
     }
 
-    // App 在前台时组间通知也要出来（横幅 + 声音 + 通知中心），这就是"组间提示音"
+    // App 在前台时通知也要出来。组间到点：声音和震动由 RestAlert 出（静音键打开也响），通知只显示横幅
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        if notification.request.identifier == Notifications.restId {
+            RestAlert.fire(sound: notification.request.content.userInfo["sound"] as? Bool ?? false)
+            return [.banner, .list]
+        }
         return [.banner, .sound, .list]
     }
 

@@ -35,6 +35,9 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         case "restTimer.clear":
             notifications.cancelRest()
 
+        case "restTimer.fire": // 网页的秒表在前台走到参考时长（和前台到点的通知在 RestAlert 里去重）
+            RestAlert.fire(sound: body["sound"] as? Bool ?? false)
+
         case "reminders.set":
             notifications.setReminders(body["items"] as? [[String: Any]] ?? [])
 

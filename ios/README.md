@@ -23,7 +23,7 @@ Debug 构建开了 `isInspectable`：Mac 上 Safari → 开发 → 你的 iPhone
 
 - 第 1 步：App 打开就是首页；关掉重开记录还在；深色模式跟随；安全区正确。
 - 第 2 步：设置里开常亮，训练页放着不锁屏；完成一组有震动。
-- 第 3 步：完成一组后锁屏，到参考时长锁屏弹通知带声音；撤销后不弹；重置后按新时间弹。
+- 第 3 步（2026-11-07 做扎实）：设置 → "到参考休息时长时响一声"打开。训练页放着不动，到参考时长手机连震三下 + 铃声（静音键打开也响，音乐会压低一下）；锁屏后到点弹通知带铃声 + 震动（静音键打开只震动）；关掉那项 → 两种情况都只震动不响。撤销后不弹；重置后按新时间弹；到点前记了下一组不弹。
 - 第 4 步：设置里开训练日提醒、时间设成两分钟后，到点收到"今天 推日 · …"。
 - 第 5 步：快捷指令 App → App 快捷指令 → 训练 → 完成一组；设置 → 辅助功能 → 触控 → 轻点背面 → 轻点两下 → 选它。训练页有进行中动作时敲两下背面记一组并震动。
 - 第 7 步：设置 → 导出，分享面板存到"文件"；导入选同一个文件，预览后合并。
@@ -34,7 +34,7 @@ Debug 构建开了 `isInspectable`：Mac 上 Safari → 开发 → 你的 iPhone
 
 - `WorkoutShell/WorkoutShellApp.swift` 入口；`AppDelegate.swift` 通知代理、回前台
 - `WebView.swift` WKWebView、JS 对话框、外链；`AppSchemeHandler.swift` `app://local/` 静态文件
-- `Bridge.swift` 消息路由、命令队列；`Notifications.swift`；`Intents.swift`；`AppState.swift` 网页同步来的完整训练状态；`NativeHelpers.swift` 震动 / 分享 / 导入；`BackupStore.swift` 自动备份文件
+- `Bridge.swift` 消息路由、命令队列；`Notifications.swift`；`Intents.swift`；`AppState.swift` 网页同步来的完整训练状态；`NativeHelpers.swift` 震动 / 分享 / 导入；`BackupStore.swift` 自动备份文件；`RestAlert.swift` 前台到点的震动 + 铃声；`rest-alert.wav` / `rest-silent.wav` 通知音
 - `copy-web.sh` 构建时复制网页；`Assets.xcassets` 图标
 
 ## 不做的

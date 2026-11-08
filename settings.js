@@ -8,7 +8,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   autoStartRest: true, // 完成一组后自动开始秒表
   defaultRestSeconds: 90, // 动作没写 restSeconds 时的参考休息
   keepScreenAwake: false, // 训练模式下屏幕常亮（耗电，默认关）
-  sound: false, // 到参考时长时响一声（默认关）；App 版 = 组间通知带不带声音
+  sound: false, // 到参考时长时响一声（默认关）；App 版 = 到点除了震动还响不响铃
   reminderOn: false, // 训练日提醒（只有 App 版能发通知）
   reminderTime: '18:30', // 'HH:MM'
 });

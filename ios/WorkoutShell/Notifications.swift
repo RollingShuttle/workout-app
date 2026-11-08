@@ -1,11 +1,13 @@
 // Notifications.swift — 本地通知：组间休息到点（一条，id "rest"）和训练日提醒（每天一条，id "reminder-日期"）。
+// 组间通知一定带声音文件：开了提示音放 rest-alert.wav，关了放 rest-silent.wav（静音文件系统也会震动，没声音的通知不震）。
+// App 在前台时到点由 AppDelegate.willPresent 交给 RestAlert（震动 + 铃声），锁屏 / 后台靠这条通知。
 // 时间按网页给的时间戳排，不依赖后台 JS，App 被杀也准。
 import Foundation
 import UserNotifications
 
 final class Notifications {
     private let center = UNUserNotificationCenter.current()
-    private static let restId = "rest"
+    static let restId = "rest"
     private static let reminderPrefix = "reminder-"
 
     // 第一次用到时才申请权限（在"完成一组"的手势之后，不在启动时）
@@ -34,7 +36,9 @@ final class Notifications {
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = body
-            if sound { content.sound = .default }
+            content.sound = UNNotificationSound(named: UNNotificationSoundName(sound ? "rest-alert.wav" : "rest-silent.wav"))
+            content.interruptionLevel = .timeSensitive // 工程加了 Time Sensitive Notifications 能力才能穿过专注模式，没加就当普通通知
+            content.userInfo = ["sound": sound]
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
             self.center.add(UNNotificationRequest(identifier: Self.restId, content: content, trigger: trigger))
         }

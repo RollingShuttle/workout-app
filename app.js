@@ -66,7 +66,7 @@ import { applySkip, setDayTo, undoOverride } from './skip-day.js';
 import { renderSkipSheet } from './skip-view.js';
 import { native } from './native.js';
 
-const APP_VERSION = '0.23.0';
+const APP_VERSION = '0.24.0';
 const BACKUP_META_KEY = 'backup';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
@@ -902,9 +902,9 @@ function tickRest() {
   const st = restClockState(state.session, state.trainTemplate, now, rest);
   const start = state.session.restStartedAt;
   if (lastClock && lastClock.start === start && !lastClock.ready && st.ready) {
-    // App 版靠本地通知出声（前台也显示），网页版才用 WebAudio；震动两边都给
-    if (state.settings.sound && !native.available) beep();
-    native.haptic('success');
+    // App 版：原生出震动 + 铃声（restTimer.fire，和前台到点的通知去重）；网页版用 WebAudio
+    if (native.available) native.restTimer.fire(state.settings.sound);
+    else if (state.settings.sound) beep();
   }
   lastClock = { start, ready: st.ready };
 }
