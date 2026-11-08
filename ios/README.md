@@ -11,6 +11,10 @@ Swift + WKWebView，把仓库根目录的网页原样打进 App。原生只做�
 
 构建时 `copy-web.sh` 会把根目录的 html / js / css / json / icons 复制进 App 的 `web/`，所以改网页后直接再 ⌘R 就是新版，不用手动拷。
 
+## 以后更新
+
+Finder → 文稿（Documents）→ workout-app → 双击 `update-mac.command`，弹出的窗口显示"拉取完成"后回 Xcode ⌘R。不用 Xcode 的 Integrate → Pull（那个对话框会一直 Loading）。
+
 ## 看网页控制台
 
 Debug 构建开了 `isInspectable`：Mac 上 Safari → 开发 → 你的 iPhone → 训练 → 点进去就是网页的控制台。
