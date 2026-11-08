@@ -25,6 +25,7 @@
 - 2026-10-25：真机反馈两条：连点 ± 按钮页面放大缩小（iOS 双击缩放）→ 全局 touch-action: manipulation；数值要能手动输入任意数（器械档位不是 1 / 2.5）→ step="any"，± 只在当前值上加减不再对齐档位。
 - 2026-10-25：Apple Health 的打球 / 二区 / 散步可以同步进来：手机上用快捷指令导出"运动记录.txt"（搭建步骤 docs/shortcut-apple-health.md），设置页"导入 Apple Health 运动记录"选文件 → 预览每条"记为"→ 入库，自动去重。
 - 2026-11-07：Mac 上 Xcode 编译通过，真机能跑；第一个运行时崩溃（网页 state 里的 null 存 UserDefaults）已修。
+- 2026-11-07：第二期第 1 ～ 2 步（自动备份 + 完整训练状态）真机验收通过。手表 App **作废**（用户决定：Series 8 在 Xcode 27 Device Hub 里配不上），WorkoutWatch target 撤掉；改做手机组间到点提醒。
 - 2026-11-07：iOS 壳写好了（`ios/`，在 Windows 上写的，还没在 Xcode 里编译过）：Xcode 工程、WKWebView + `app://local/` 自定义 scheme、JS 对话框、Bridge（协议 3.4 全部消息）、本地通知、App Intents（完成一组 / 重置秒表 / 下一个动作 / 开始训练 + Siri 短语）、分享导出 / 文件导入、构建时复制网页的脚本、README。下一步在 Mac 上打开 `ios/WorkoutShell.xcodeproj`，按 ios/README.md 验收第 1 步起。
 - 2026-11-02：iOS App 的网页端部分做完（native.js 桥接、组间通知调用点、训练日提醒设置、原生命令处理、导出导入先问原生）；PWA 版没原生时全是空操作。用户决定不做耳机键，组间提示靠本地通知。
 - 2026-11-02：写了 iOS App 方案 `docs/ios-app-plan.md`：Swift + WKWebView 壳复用全部网页代码，原生只做桥接、本地通知（组间到点 / 训练日）、App Intents（轻点背面 / 动作按钮 / Siri 完成一组）、可选的耳机媒体键（会接管播放、和听歌互斥）、原生导出导入；TestFlight 分发；8 步实施各带验收。
@@ -51,11 +52,12 @@
 
 - 真机复验：上肢B 结束后的有氧表单、首页排程规则折叠、放弃训练 / 删除记录、结束训练汇总。
 - **iOS App 真机验收**：Mac 上目前只在模拟器跑过（DEVELOPMENT_TEAM 为空）。接下来：iPhone 连线 → Signing 选 Team → 真机跑 → 按 ios/README.md 第 2 ～ 5、7 步验收；拿到 DEVELOPMENT_TEAM 后写进 pbxproj。
-- **第二期（docs/ios-app-plan.md 第 10 节；用户 2026-11-07 定：直接开，手表是 Series 8 → 最低 watchOS 10）**：第 1 ～ 2 步自动备份已写好，Mac 上编译 + 按 ios/README.md 验收；接着第 3 步加 WorkoutWatch target。付费账号到了把备份改成 iCloud 云盘。
+- **第二期（docs/ios-app-plan.md 第 10 节）**：第 1 ～ 2 步自动备份已真机验收；手表 App 作废（2026-11-07）；付费账号到了把备份改成 iCloud 云盘。
 - 功能项已做完；后面按"以后再说"和真机使用中的反馈来。
 
 ## 日志（每步追加一行：日期 · 做了什么 · 验收结果 · 下一步）
 
+- 2026-11-07 · 手表 App 作废：Series 8（watchOS 26.6）在 Xcode 27.2 的 Device Hub 里一直发现不了（Device Hub 的 "+ → Pair Nearby Device" 只支持 watchOS 27；真机 iPhone 的 Device 菜单没有配表项；有线隧道等了很久手表设置里也不出现"开发者模式"），用户决定不做。`git revert cc40940` 撤掉 WorkoutWatch target、ios/WorkoutWatch/、README 手表段；方案 10.2 标作废留档 · 下一步：手机组间到点提醒做扎实
 - 2026-11-07 · 第二期第 1 ～ 2 步：自动备份 + 完整训练状态（v0.23.0）：db.js onWrite 写入钩子（每个写操作 then(notifyWrite)）；native.js backup.save / backup.load、事件 backup.result；app.js nativeTrainingState（inTraining / title / activeId / activeExercise / restStartedAt / restSeconds / unit / exercises[{id,name,status,setsTarget,setsDone,restSeconds,bodyweight,countUnit,weight(lb),loadText,reps}]，不训练时 today / todayKind / todayDetail，不放 null）、scheduleAutoBackup（写库后 3 秒，测试模式 / 首次启动 / 训练中不存）→ runAutoBackup 发 buildBackup 的 JSON 给原生存成 训练备份.json、renderBackupCard 在有 backup 能力时不显示、backupStatusText 改说明、首次启动页"从 App 的自动备份恢复"→ backup.load → restoreNativeBackup（parseBackup、confirm、清空后写记录 / 计划 / 设置、afterRecordsChanged）、applyImport 收尾抽成 afterRecordsChanged；补 formatWeight 的 import；sw.js v42。iOS：BackupStore.swift（Documents 下按文件名存，latest 取最新 .json）、Bridge caps 加 backup + 两条消息、AppState.update 递归清理 NSNull 保留数组 / 字典并加 activeId / restStartedAtMs / restSeconds / exercises / today 访问器、pbxproj 加文件 + INFOPLIST_KEY_UIFileSharingEnabled / LSSupportsOpeningDocumentsInPlace · 决定：自动备份只在 App 版（caps 有 backup）；手动导出留着；训练中不存、结束那次写库触发；恢复只在首次启动页 · 验收通过（只用浏览器实测，注入假 webkit + hello caps backup）：首次启动页多"从 App 的自动备份恢复"和说明，backup.result none → "还没有自动备份"；点恢复发 backup.load；载入内置计划 → state 带 today 推日 + 动作串，3 秒后 backup.save 名 训练备份.json、JSON 含 plan / settings / 0 条 sessions，首页无备份卡；#train 选坐姿肩推 → state 五个动作 "incline-bench pending 0/3 105 lb x10 rest150"… 命令 completeSet → setsDone 2/3、restStartedAt 更新、训练中无 backup.save；保存并结束 → backup.save 含 1 条 finished 记录 2 组；设置页说明"每次改动后 App 自动存一份…"；清空全部数据 → 首次启动页 → 恢复（喂回刚才的 JSON）→ 首页推日、历史"共 1 次训练 · 推日 · 2 组"；无报错；两个审查代理（编译 / 运行时）看过 Swift 改动，无问题，只改了文案（删 App 会删掉 Documents，不能说"重装后能恢复"）· Mac 上编译验收，然后第 3 步手表 target
 
 - 2026-11-07 · 第二期立项 + Xcode 推荐设置：用户在 Mac 上跑通（模拟器，没签名）后提了三件事（GitHub 账号进 Xcode、数据存 App 里不备份、手表 App 含表盘）；用 4 个查证代理核实 Apple 文档 / WebKit 源码 / 论坛后写成 docs/ios-app-plan.md 第 10 节：IndexedDB 在 Library/WebKit 随 iCloud 备份、删 App 才丢，ITP 正常使用不清；iCloud 云盘 / KVS / CloudKit 都要付费账号，UIFileSharingEnabled 免费；手表：sendMessage 能后台唤醒手机 App，本地通知锁屏时自动转手表，WidgetKit 复杂功能 watchOS 9+、Text(timerInterval:) 自走，transferCurrentComplicationUserInfo 对 WidgetKit 无效，免费账号能装真手表。pbxproj 加全 Xcode 推荐的 CLANG_WARN_* / GCC_WARN_* 和 ASSETCATALOG…SYMBOL_EXTENSIONS，LastUpgradeCheck 2720，消掉"Update to recommended settings"提示 · 验收：Mac 上下次拉取后黄色提示应消失（未验）· 等用户定顺序：真机验收 → 自动备份 → 手表

@@ -245,6 +245,8 @@ Mac 上第一次跑通之后用户提了三点：GitHub 账号加进 Xcode、数
 
 ### 10.2 手表 App
 
+**2026-11-07 作废**（用户决定）：Series 8 最高 watchOS 26，Xcode 27 的 Device Hub 只给 watchOS 27 的手表做无线配对，有线经 iPhone 隧道发现手表试了一晚上没成功（Apple 论坛同配置的人也卡在这）。WorkoutWatch target 已撤（revert cc40940），下面的方案只留作记录。组间到点提醒改成把手机本地通知做扎实（4.1）。
+
 **结论**：可行。手表只是"遥控器 + 显示屏"，手机 App 仍是唯一真相；组间到点的提醒不用写手表代码——iOS 本地通知在手机锁屏时自动转到手表（Apple "notification forwarding"：手机亮着解锁给手机，否则手表戴着且解锁给手表，二者只到一处）。
 
 **架构**
