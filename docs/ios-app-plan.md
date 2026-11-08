@@ -264,7 +264,7 @@ Mac 上第一次跑通之后用户提了三点：GitHub 账号加进 Xcode、数
 **实施步骤**（每步一验收一提交）
 1. 网页端（Windows 上做、浏览器验收）：`native.state` 扩成完整训练状态；`backup.save` 调用点；App 版隐藏备份提醒。 ✅ 2026-11-07（v0.23.0，浏览器验收通过）
 2. iOS：`backup.save` 写 Documents + Info.plist 两个 key；首次启动空库 + 有文件 → 恢复提示。验收：文件 App 里看到 训练/训练备份.json；清空全部数据后能恢复（删 App 会连文件一起删，iCloud 云盘容器才解决，见第 2 步）。 ✅ 2026-11-07 写好（BackupStore.swift、Bridge、AppState 递归清理嵌套状态），未编译，Mac 上验收
-3. Xcode 加 `WorkoutWatch` target，空页面"训练"，装到真手表。验收：手表上打开有字。
+3. Xcode 加 `WorkoutWatch` target，空页面"训练"，装到真手表。验收：手表上打开有字。 ✅ 2026-11-07 写好（手写 pbxproj：target / 嵌入 / 依赖 / 手表 Debug-Release 配置，watchOS 10，Bundle ID com.mikeyang.workout.watchkitapp），Mac 上验收
 4. WCSession：手机发完整状态，手表显示今天计划 / 进行中动作 / 秒表。验收：手机上记一组，手表 2 秒内变。
 5. 手表"完成一组 / 下一个动作"：影子状态 + 队列 + 通知重排。验收：手机锁屏放口袋，手表记两组，到点手表震，手机解锁后网页里两组都在、时间对。
 6. 表盘小组件三种尺寸 + App Group。验收：加到表盘，训练中显示动作和秒表，点开 App。
