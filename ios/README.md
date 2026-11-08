@@ -15,17 +15,6 @@ Swift + WKWebView，把仓库根目录的网页原样打进 App。原生只做�
 
 Finder → 文稿（Documents）→ workout-app → 双击 `update-mac.command`，弹出的窗口显示"拉取完成"后回 Xcode ⌘R。不用 Xcode 的 Integrate → Pull（那个对话框会一直 Loading）。
 
-## 手表 App（WorkoutWatch，第二期第 3 步起）
-
-同一个工程里的第二个 target，随 iOS App 一起装到配对的 Apple Watch（Series 8，watchOS 10 起）。
-
-1. 手表：设置 → 隐私与安全性 → 开发者模式 → 打开（手机也要开着）。手表要亮着、解锁、戴在手上。
-2. Xcode 左边 WorkoutShell 工程 → TARGETS → **WorkoutWatch** → Signing & Capabilities → Team 选同一个账号（Bundle ID 默认 `com.mikeyang.workout.watchkitapp`，必须是 iOS 那个加 `.watchkitapp`）。
-3. 顶部 scheme 从 WorkoutShell 换成 **WorkoutWatch**，设备选"你的手表名 (via 你的 iPhone)"，⌘R。Mac 通过手机隧道装到手表，第一次要等一两分钟。
-4. 手表上出现"训练"App，打开有字就算第 3 步过。
-
-跑 iOS 的 WorkoutShell scheme 时手表 App 也会一起嵌进去装上（Embed Watch Content）。
-
 ## 看网页控制台
 
 Debug 构建开了 `isInspectable`：Mac 上 Safari → 开发 → 你的 iPhone → 训练 → 点进去就是网页的控制台。
@@ -47,7 +36,6 @@ Debug 构建开了 `isInspectable`：Mac 上 Safari → 开发 → 你的 iPhone
 - `WebView.swift` WKWebView、JS 对话框、外链；`AppSchemeHandler.swift` `app://local/` 静态文件
 - `Bridge.swift` 消息路由、命令队列；`Notifications.swift`；`Intents.swift`；`AppState.swift` 网页同步来的完整训练状态；`NativeHelpers.swift` 震动 / 分享 / 导入；`BackupStore.swift` 自动备份文件
 - `copy-web.sh` 构建时复制网页；`Assets.xcassets` 图标
-- `../WorkoutWatch/`：手表 target（`WorkoutWatchApp.swift` 入口、`ContentView.swift` 页面、`Assets.xcassets` 图标）
 
 ## 不做的
 
