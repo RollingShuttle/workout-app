@@ -36,7 +36,7 @@ import {
   restReferenceSeconds,
 } from './workout.js';
 import { renderTrain, renderTrainUnavailable, renderAlternateSheet, renderFinishSheet, updateRestClock, updateLastRef, restClockState, formatClock } from './train-view.js';
-import { putSession, deleteSession, findDraft, listSessions, requestPersistentStorage, putSessions, clearSessions, clearSettings, isPersisted, getSetting, putSetting } from './db.js';
+import { putSession, deleteSession, findDraft, listSessions, requestPersistentStorage, putSessions, clearSessions, clearSettings, isPersisted, getSetting, putSetting, onWrite } from './db.js';
 import { lastSetsFor, prefillFor, formatSets } from './history.js';
 import { renderHistoryList, renderSessionDetail, renderExerciseChart, renderEntryEditSheet, sessionTypeName } from './history-view.js';
 import { suggestionFor } from './progression.js';
@@ -57,7 +57,7 @@ import {
 } from './plan-edit.js';
 import { renderPlanOverview, renderPlanDay, renderAssignmentSheet, renderExerciseSheet } from './plan-view.js';
 import { loadSettings, saveSettings, normalizeSettings } from './settings.js';
-import { setDisplayUnit } from './units.js';
+import { setDisplayUnit, formatWeight } from './units.js';
 import { setWakeLock, wakeLockSupported, unlockAudio, beep, audioSupported } from './device.js';
 import { buildBackup, backupFileName, parseBackup, normalizeBackupMeta, backupReminder, finishedTrainingCount, BACKUP_REMIND_DAYS, BACKUP_SNOOZE_DAYS } from './backup.js';
 import { renderSettings } from './settings-view.js';
@@ -66,7 +66,7 @@ import { applySkip, setDayTo, undoOverride } from './skip-day.js';
 import { renderSkipSheet } from './skip-view.js';
 import { native } from './native.js';
 
-const APP_VERSION = '0.22.0';
+const APP_VERSION = '0.23.0';
 const BACKUP_META_KEY = 'backup';
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
@@ -497,6 +497,7 @@ function renderSkipSheetFor(root, dateKey) {
 
 // 备份提醒卡：超过 14 天没备份、期间又完成过训练才出现；"稍后再说"推迟 7 天
 function renderBackupCard() {
+  if (native.caps.has('backup')) return null; // App 版每次改动后自动存一份，不用催
   const r = backupReminder(state.history, state.backupMeta, Date.now());
   if (!r.due) return null;
   const text = state.backupMeta.lastAt
@@ -1307,7 +1308,11 @@ async function applyImport(mode) {
     state.saveError = `导入失败：${err.message}`;
   }
   state.importPreview = null;
-  // 记录变了：草稿重找、历史重读
+  await afterRecordsChanged();
+}
+
+// 记录整批变了（导入 / 恢复）：草稿重找、历史重读
+async function afterRecordsChanged() {
   state.session = null;
   state.inputs = null;
   state.historyLoaded = false;
@@ -1320,6 +1325,70 @@ async function applyImport(mode) {
     /* 读不到草稿就当没有 */
   }
   render();
+}
+
+/* ---------- App 版自动备份：每次写库后 3 秒存一份到 App 自己的文件夹（文件 App 里能看到）；训练中不存，结束那次写库会触发 ---------- */
+
+const AUTO_BACKUP_NAME = '训练备份.json';
+let autoBackupTimer = null;
+
+function scheduleAutoBackup() {
+  if (!native.caps.has('backup') || state.isTest) return; // 测试模式的数据不能盖掉真备份
+  if (autoBackupTimer) clearTimeout(autoBackupTimer);
+  autoBackupTimer = setTimeout(runAutoBackup, 3000);
+}
+
+async function runAutoBackup() {
+  autoBackupTimer = null;
+  if (!native.caps.has('backup') || state.isTest || state.firstRun) return;
+  if (state.session && !state.session.finishedAt) return; // 训练中每组都在写库，等结束
+  let sessions;
+  try {
+    sessions = await listSessions({ test: false });
+  } catch (_) {
+    return;
+  }
+  const json = JSON.stringify(buildBackup({ plan: state.plan, settings: state.settings, sessions, now: Date.now() }), null, 2);
+  native.backup.save(AUTO_BACKUP_NAME, json);
+}
+
+// 首次启动页"从 App 的自动备份恢复"：原生把最新一份发回来（backup.result）
+async function restoreNativeBackup(detail) {
+  if (detail.none || typeof detail.text !== 'string') {
+    state.saveError = '这台手机的 App 里还没有自动备份。';
+    render();
+    return;
+  }
+  const parsed = parseBackup(detail.text);
+  if (!parsed.ok) {
+    state.saveError = `备份文件读不了：${parsed.error}`;
+    render();
+    return;
+  }
+  const { plan, settings, sessions } = parsed.data;
+  const when = Number.isFinite(detail.savedAt) ? `（${formatDateText(new Date(detail.savedAt))} 存的）` : '';
+  const parts = [`${sessions.length} 条记录`, plan ? '计划' : null, settings ? '设置' : null].filter(Boolean).join('、');
+  if (!window.confirm(`恢复${when}：${parts}？现在库里的内容会被替换。`)) return;
+  try {
+    await clearSessions();
+    await putSessions(sessions);
+    const nextPlan = plan || state.builtinPlan;
+    await savePlan(nextPlan);
+    state.plan = nextPlan;
+    if (settings) {
+      await saveSettings(settings);
+      state.settings = settings;
+      setDisplayUnit(settings.unit);
+    }
+    state.saveError = null;
+  } catch (err) {
+    state.saveError = `恢复失败：${err.message}`;
+    render();
+    return;
+  }
+  state.firstRun = false;
+  state.importPreview = null;
+  await afterRecordsChanged();
 }
 
 async function reloadBuiltinPlan() {
@@ -1369,6 +1438,7 @@ function backupStatusText() {
   const base = state.backupMeta.lastAt
     ? `上次备份：${formatDateText(new Date(state.backupMeta.lastAt))}（${r.days} 天前）· 之后完成 ${r.since} 次训练`
     : `还没备份过 · 已完成 ${r.finished} 次训练`;
+  if (native.caps.has('backup')) return `每次改动后 App 自动存一份到 文件 → 我的 iPhone → 训练 → ${AUTO_BACKUP_NAME}，清空数据或换手机后在第一次打开的页面恢复（直接删除 App 会连文件一起删，想保险就把它拷到 iCloud 云盘）。${base}。手动导出可以存到别处`;
   return `${base}。超过 ${BACKUP_REMIND_DAYS} 天没备份且有新训练时首页会提醒${r.snoozed ? '（已推迟）' : ''}`;
 }
 
@@ -1498,6 +1568,8 @@ function renderFirstRun(root) {
       el('p', { class: 'ex-notes', text: '内置计划：推日 / 拉日 / 腿日 / 上肢B，周二周五可选打球，含过渡周调课。' }),
       el('button', { class: 'btn-secondary link-btn', type: 'button', onclick: () => choosePlan(blankPlanFrom(state.builtinPlan)) }, '从空白计划开始'),
       el('p', { class: 'ex-notes', text: '空白计划：每天休息，只能记打球 / 散步 / 二区，训练日以后在计划编辑里加。' }),
+      native.caps.has('backup') ? el('button', { class: 'btn-secondary link-btn', type: 'button', onclick: () => native.backup.load() }, '从 App 的自动备份恢复') : null,
+      native.caps.has('backup') ? el('p', { class: 'ex-notes', text: `App 每次改动后自动存一份到 文件 → 我的 iPhone → 训练 → ${AUTO_BACKUP_NAME}；清空数据后、或换手机（iCloud 整机备份会带上这个文件）后从这里恢复。注意：直接删除 App 会连这个文件一起删掉。` }) : null,
     ]),
     state.saveError ? el('p', { class: 'problem save-error', text: state.saveError }) : null,
   ]);
@@ -1573,12 +1645,60 @@ function syncReminders() {
   else native.reminders.clear();
 }
 
-// 把当前状态给原生（锁屏卡片 / 快捷指令判断用）
-function syncNativeState() {
+// 给原生的完整训练状态（docs/ios-app-plan.md 10.2）：快捷指令回话、手表显示、手机在后台时原生自己记组都靠它。
+// 不放 null（原生存 UserDefaults 不认），没有的键就不给。
+function nativeTrainingState() {
   const s = state.session;
-  const t = s ? findTemplate(s.templateId) : null;
-  const active = s && t && s.activeExerciseId ? findExercise(t, s.activeExerciseId) : null;
-  const st = { inTraining: Boolean(s && !s.finishedAt), template: t ? t.name : null, activeExercise: active ? active.name : null, restRunning: Boolean(s && !s.finishedAt && s.restStartedAt != null) };
+  const t = s && !s.finishedAt ? findTemplate(s.templateId) : null;
+  const st = { inTraining: Boolean(t), restRunning: Boolean(t && s.restStartedAt != null), unit: state.settings.unit };
+  if (t) {
+    st.template = t.name;
+    st.title = t.name;
+    const active = s.activeExerciseId ? findExercise(t, s.activeExerciseId) : null;
+    if (active) {
+      const aEntry = findEntry(s, s.activeExerciseId);
+      st.activeId = s.activeExerciseId;
+      st.activeExercise = (aEntry ? effectiveExercise(aEntry, active) : active).name;
+    }
+    if (s.restStartedAt != null) st.restStartedAt = s.restStartedAt;
+    st.restSeconds = restReferenceSeconds(s, t, state.settings.defaultRestSeconds);
+    st.exercises = [];
+    for (const entry of orderedEntries(s)) {
+      const base = findExercise(t, entry.exerciseId);
+      if (!base) continue;
+      const ex = effectiveExercise(entry, base);
+      const pre = prefillFor(entry, ex, lastFor(entry));
+      const load = ex.load || {};
+      const row = {
+        id: entry.exerciseId,
+        name: ex.name,
+        status: entry.status,
+        setsTarget: targetSets(ex, entry),
+        setsDone: entry.sets.length,
+        restSeconds: typeof ex.restSeconds === 'number' ? ex.restSeconds : state.settings.defaultRestSeconds,
+        bodyweight: Boolean(load.bodyweight),
+        countUnit: ex.countUnit === 'm' ? 'm' : 'reps',
+      };
+      if (pre.weight != null) {
+        row.weight = pre.weight; // 永远是 lb（数据单位）
+        row.loadText = load.assisted ? `${formatWeight(pre.weight)} 助力` : formatWeight(pre.weight);
+      } else if (load.bodyweight) {
+        row.loadText = '自重';
+      }
+      if (pre.reps != null) row.reps = pre.reps;
+      st.exercises.push(row);
+    }
+  } else if (state.plan && !state.firstRun) {
+    const day = withRotation(resolveDay(state.plan, state.date), state.history, toDateKey(state.date));
+    st.today = day.title;
+    st.todayKind = day.kind;
+    st.todayDetail = dayDetail(day);
+  }
+  return st;
+}
+
+function syncNativeState() {
+  const st = nativeTrainingState();
   const key = JSON.stringify(st);
   if (key === lastStateKey) return;
   lastStateKey = key;
@@ -1662,6 +1782,7 @@ function handleNativeCommand(name, detail) {
 
 function handleNativeEvent(detail) {
   if (detail.type === 'import.result' && typeof detail.text === 'string') previewImportText(detail.name || '备份.json', detail.text);
+  if (detail.type === 'backup.result') restoreNativeBackup(detail);
   if (detail.type === 'foreground') document.dispatchEvent(new Event('visibilitychange')); // 和回前台一样：重算秒表、换日期
   if (detail.type === 'hello') render(); // 能力列表到了，设置页按它画
 }
@@ -1828,6 +1949,7 @@ async function main() {
   window.addEventListener('hashchange', render);
   native.onCommand(handleNativeCommand);
   native.onEvent(handleNativeEvent);
+  onWrite(scheduleAutoBackup);
   native.ready();
 }
 

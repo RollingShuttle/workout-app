@@ -7,7 +7,7 @@ import UIKit
 final class Bridge: NSObject, WKScriptMessageHandler {
     static let shared = Bridge()
     static let version = "1.0"
-    static let caps = ["notifications", "intents", "haptics", "keepAwake", "share", "import"]
+    static let caps = ["notifications", "intents", "haptics", "keepAwake", "share", "import", "backup"]
 
     private weak var webView: WKWebView?
     private var webReady = false
@@ -54,6 +54,17 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         case "import":
             FileImport.pick { [weak self] name, text in
                 self?.send(["type": "import.result", "name": name, "text": text])
+            }
+
+        case "backup.save":
+            guard let name = body["name"] as? String, let json = body["json"] as? String else { return }
+            BackupStore.save(name: name, json: json)
+
+        case "backup.load":
+            if let b = BackupStore.latest() {
+                send(["type": "backup.result", "name": b.name, "text": b.text, "savedAt": b.savedAtMs])
+            } else {
+                send(["type": "backup.result", "none": true])
             }
 
         case "state":

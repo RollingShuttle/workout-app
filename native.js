@@ -61,8 +61,18 @@ export const native = {
   importFile() {
     return native.send({ type: 'import' });
   },
+  // 完整训练状态（见 docs/ios-app-plan.md 10.2）：快捷指令回话、手表显示、手机在后台时原生自己记组都靠它
   state(s) {
     return native.send({ type: 'state', ...s });
+  },
+  // 自动备份：save 把整份备份 JSON 交给原生存到 App 自己的文件夹；load 让原生把最新的一份发回来（backup.result 事件）
+  backup: {
+    save(name, json) {
+      return native.send({ type: 'backup.save', name, json });
+    },
+    load() {
+      return native.send({ type: 'backup.load' });
+    },
   },
   ready() {
     return native.send({ type: 'ready' });
@@ -71,7 +81,7 @@ export const native = {
   onCommand(fn) {
     commandHandlers.push(fn);
   },
-  // 其他事件：fn(detail)，detail.type = hello | import.result | foreground | notification.permission
+  // 其他事件：fn(detail)，detail.type = hello | import.result | backup.result | foreground | notification.permission
   onEvent(fn) {
     eventHandlers.push(fn);
   },

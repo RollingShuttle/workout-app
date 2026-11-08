@@ -28,12 +28,13 @@ Debug 构建开了 `isInspectable`：Mac 上 Safari → 开发 → 你的 iPhone
 - 第 5 步：快捷指令 App → App 快捷指令 → 训练 → 完成一组；设置 → 辅助功能 → 触控 → 轻点背面 → 轻点两下 → 选它。训练页有进行中动作时敲两下背面记一组并震动。
 - 第 7 步：设置 → 导出，分享面板存到"文件"；导入选同一个文件，预览后合并。
 - 第 8 步：Product → Archive → Distribute App → TestFlight；App Store Connect 里加两个测试员。
+- 第二期第 1 ～ 2 步（自动备份，方案 10.1）：载入计划或练完一次后，文件 App → 我的 iPhone → 训练 里出现 `训练备份.json`，内容是完整备份；首页不再弹"该备份了"；设置 → 清空全部数据 → 第一次打开页多一个"从 App 的自动备份恢复"，点它 → 确认 → 记录和计划回来。
 
 ## 文件
 
 - `WorkoutShell/WorkoutShellApp.swift` 入口；`AppDelegate.swift` 通知代理、回前台
 - `WebView.swift` WKWebView、JS 对话框、外链；`AppSchemeHandler.swift` `app://local/` 静态文件
-- `Bridge.swift` 消息路由、命令队列；`Notifications.swift`；`Intents.swift`；`AppState.swift`；`NativeHelpers.swift` 震动 / 分享 / 导入
+- `Bridge.swift` 消息路由、命令队列；`Notifications.swift`；`Intents.swift`；`AppState.swift` 网页同步来的完整训练状态；`NativeHelpers.swift` 震动 / 分享 / 导入；`BackupStore.swift` 自动备份文件
 - `copy-web.sh` 构建时复制网页；`Assets.xcassets` 图标
 
 ## 不做的

@@ -16,6 +16,7 @@
 		B00000000000000000000007 /* Intents.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000007 /* Intents.swift */; };
 		B00000000000000000000008 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000008 /* AppState.swift */; };
 		B00000000000000000000009 /* NativeHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000009 /* NativeHelpers.swift */; };
+		B00000000000000000000011 /* BackupStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000013 /* BackupStore.swift */; };
 		B00000000000000000000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000010 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -29,6 +30,7 @@
 		F00000000000000000000007 /* Intents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Intents.swift; sourceTree = "<group>"; };
 		F00000000000000000000008 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		F00000000000000000000009 /* NativeHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHelpers.swift; sourceTree = "<group>"; };
+		F00000000000000000000013 /* BackupStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupStore.swift; sourceTree = "<group>"; };
 		F00000000000000000000010 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F00000000000000000000011 /* WorkoutShell.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WorkoutShell.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F00000000000000000000012 /* copy-web.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "copy-web.sh"; sourceTree = "<group>"; };
@@ -66,6 +68,7 @@
 				F00000000000000000000007 /* Intents.swift */,
 				F00000000000000000000008 /* AppState.swift */,
 				F00000000000000000000009 /* NativeHelpers.swift */,
+				F00000000000000000000013 /* BackupStore.swift */,
 				F00000000000000000000010 /* Assets.xcassets */,
 			);
 			path = WorkoutShell;
@@ -180,6 +183,7 @@
 				B00000000000000000000007 /* Intents.swift in Sources */,
 				B00000000000000000000008 /* AppState.swift in Sources */,
 				B00000000000000000000009 /* NativeHelpers.swift in Sources */,
+				B00000000000000000000011 /* BackupStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -316,8 +320,10 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "训练";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIFileSharingEnabled = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
@@ -344,8 +350,10 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "训练";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIFileSharingEnabled = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";

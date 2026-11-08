@@ -94,26 +94,42 @@ async function withStore(storeName, mode, fn, retried = false) {
   });
 }
 
+// 写入钩子：每次成功写库后叫一声（App 版用来自动存备份）。钩子里出错不影响写入。
+const writeListeners = [];
+export function onWrite(fn) {
+  writeListeners.push(fn);
+}
+function notifyWrite(result) {
+  for (const fn of writeListeners) {
+    try {
+      fn();
+    } catch (_) {
+      /* 钩子自己的问题 */
+    }
+  }
+  return result;
+}
+
 export function putSession(session) {
-  return withStore('sessions', 'readwrite', (store) => requestToPromise(store.put(session)));
+  return withStore('sessions', 'readwrite', (store) => requestToPromise(store.put(session))).then(notifyWrite);
 }
 
 export function deleteSession(id) {
-  return withStore('sessions', 'readwrite', (store) => requestToPromise(store.delete(id)));
+  return withStore('sessions', 'readwrite', (store) => requestToPromise(store.delete(id))).then(notifyWrite);
 }
 
 // 导入用：一个事务里写入多条
 export function putSessions(sessions) {
-  return withStore('sessions', 'readwrite', (store) => Promise.all(sessions.map((s) => requestToPromise(store.put(s)))));
+  return withStore('sessions', 'readwrite', (store) => Promise.all(sessions.map((s) => requestToPromise(store.put(s))))).then(notifyWrite);
 }
 
 // 清空（覆盖导入 / 清空数据用）：整张表，不分测试模式
 export function clearSessions() {
-  return withStore('sessions', 'readwrite', (store) => requestToPromise(store.clear()));
+  return withStore('sessions', 'readwrite', (store) => requestToPromise(store.clear())).then(notifyWrite);
 }
 
 export function clearSettings() {
-  return withStore('settings', 'readwrite', (store) => requestToPromise(store.clear()));
+  return withStore('settings', 'readwrite', (store) => requestToPromise(store.clear())).then(notifyWrite);
 }
 
 // 当前是否已获持久存储：true / false / null（不支持）
@@ -154,7 +170,7 @@ export function getSetting(key) {
 }
 
 export function putSetting(key, value) {
-  return withStore('settings', 'readwrite', (store) => requestToPromise(store.put({ key, value })));
+  return withStore('settings', 'readwrite', (store) => requestToPromise(store.put({ key, value }))).then(notifyWrite);
 }
 
 // 申请持久存储（spec 2.5）：支持的话系统存储紧张时也不清这个站的数据。失败不影响使用。
