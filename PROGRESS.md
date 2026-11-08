@@ -50,10 +50,13 @@
 
 
 - 真机复验：上肢B 结束后的有氧表单、首页排程规则折叠、放弃训练 / 删除记录、结束训练汇总。
-- **iOS App 在 Mac 上编译验收**：`ios/` 已写好但没编译过。Mac 上：Xcode 打开 `ios/WorkoutShell.xcodeproj` → Signing 选 Team、改 Bundle ID → 真机运行；按 `ios/README.md` 的验收清单逐步过（第 1 步壳能跑 → 2 常亮震动 → 3 组间通知 → 4 训练日提醒 → 5 快捷指令 / 轻点背面 → 7 导出导入 → 8 TestFlight）。编译报错就按 Xcode 的提示改（代码是没经过编译器写的，细节可能有出入）。
+- **iOS App 真机验收**：Mac 上目前只在模拟器跑过（DEVELOPMENT_TEAM 为空）。接下来：iPhone 连线 → Signing 选 Team → 真机跑 → 按 ios/README.md 第 2 ～ 5、7 步验收；拿到 DEVELOPMENT_TEAM 后写进 pbxproj。
+- **第二期（docs/ios-app-plan.md 第 10 节，等用户确认顺序）**：数据自动存 App 文件夹（免费账号可做）→ iCloud 云盘（等付费账号）；手表 App（WCSession + 影子状态 + 表盘小组件），先问手表型号。
 - 功能项已做完；后面按"以后再说"和真机使用中的反馈来。
 
 ## 日志（每步追加一行：日期 · 做了什么 · 验收结果 · 下一步）
+
+- 2026-11-07 · 第二期立项 + Xcode 推荐设置：用户在 Mac 上跑通（模拟器，没签名）后提了三件事（GitHub 账号进 Xcode、数据存 App 里不备份、手表 App 含表盘）；用 4 个查证代理核实 Apple 文档 / WebKit 源码 / 论坛后写成 docs/ios-app-plan.md 第 10 节：IndexedDB 在 Library/WebKit 随 iCloud 备份、删 App 才丢，ITP 正常使用不清；iCloud 云盘 / KVS / CloudKit 都要付费账号，UIFileSharingEnabled 免费；手表：sendMessage 能后台唤醒手机 App，本地通知锁屏时自动转手表，WidgetKit 复杂功能 watchOS 9+、Text(timerInterval:) 自走，transferCurrentComplicationUserInfo 对 WidgetKit 无效，免费账号能装真手表。pbxproj 加全 Xcode 推荐的 CLANG_WARN_* / GCC_WARN_* 和 ASSETCATALOG…SYMBOL_EXTENSIONS，LastUpgradeCheck 2720，消掉"Update to recommended settings"提示 · 验收：Mac 上下次拉取后黄色提示应消失（未验）· 等用户定顺序：真机验收 → 自动备份 → 手表
 
 - 2026-11-07 · Mac 上更新代码的办法：仓库在 /Users/yangjiadong/Documents/workout-app；Xcode Integrate → Pull 一直 Loading，改用仓库根目录的 update-mac.command（双击：cd 到自己所在目录，git pull --ff-only --autostash，末尾打印 pbxproj 里的 DEVELOPMENT_TEAM / Bundle ID 方便提交进仓库）；ios/README.md 加"以后更新" · 验收：待 Mac 上双击一次 · 拿到 Team ID 后写进 pbxproj，免得每次 pull 和本地改动打架
 

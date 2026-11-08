@@ -228,3 +228,45 @@ Mac 上要做的只剩 Swift（`Bridge` 按 3.4 的协议、`Notifications`、`I
 - [ ] 想好 Bundle ID 和 App 名（主屏幕显示的名字，如"训练"）
 - [ ] 一个 1 秒静音的 m4a（第 6 步用，到时我用 `afconvert` 生成）
 - [ ] PWA 里先导出一份 JSON 备份，App 装好后导入
+
+## 10. 第二期（2026-11-07 立项，用户提的三件事）
+
+Mac 上第一次跑通之后用户提了三点：GitHub 账号加进 Xcode、数据"存在 App 里不用再备份"、手表 App（显示接下来的动作和组间时间、能放到表盘）。本节是核实过的事实和方案，实施仍是一步一验收。事实来源：Apple 文档 / WebKit 源码 / 开发者论坛（2026-11-07 查）。
+
+### 10.1 数据：现在已经在 App 里了
+
+- WKWebView 的 IndexedDB 在 App 容器的 `Library/WebKit/WebsiteData/`（不是 Caches），所以**随 iPhone 的 iCloud 备份 / 电脑备份一起备份**，App 升级（同一个 Bundle ID 装新版）不丢，"卸载 App"会连数据一起删，"卸载未使用的 App（Offload）"不删。
+- ITP 的"7 天不用就清空"对 WKWebView 也生效，但只清"用户没交互过"的站点；每次点页面都刷新交互时间，正常使用不会被清。磁盘快满时 WebKit 会按 LRU 清，几 MB 的数据不在前列。
+- 所以"不在手机文件里备份"是可以的：换手机用 iCloud 恢复即可。唯一会丢的情形是手动删掉 App。
+- 方案（两步，第 1 步免费账号就能做，第 2 步要等付费账号）：
+  1. **自动存一份到 App 自己的文件夹**：每次结束训练 / 改记录后，网页发 `backup.save { name, json }`，原生写到 `Documents/训练备份.json`；Info.plist 加 `UIFileSharingEnabled` + `LSSupportsOpeningDocumentsInPlace`，这个文件就出现在 文件 App → 我的 iPhone → 训练 里（Apple DTS 说明：两个 key 都是 Info.plist 键，不要付费能力）。App 版隐藏 14 天备份提醒；手动"导出"按钮留着。首次启动库是空的而文件在 → 问要不要恢复。
+  2. **付费账号通过后换成 iCloud 云盘**：同一个文件改写到 ubiquity 容器（`FileManager.url(forUbiquityContainerIdentifier:)`，Signing & Capabilities 加 iCloud → iCloud Documents），出现在 文件 → iCloud 云盘 → 训练；删 App 重装也能恢复。Apple 能力表：iCloud（Documents / KVS / CloudKit）和推送都只对付费会员开放，免费 Personal Team 不行；KVS 上限 1 MB / 1024 个 key，不够用。
+- 不做：CloudKit 同步（spec 说两台手机独立）。
+
+### 10.2 手表 App
+
+**结论**：可行。手表只是"遥控器 + 显示屏"，手机 App 仍是唯一真相；组间到点的提醒不用写手表代码——iOS 本地通知在手机锁屏时自动转到手表（Apple "notification forwarding"：手机亮着解锁给手机，否则手表戴着且解锁给手表，二者只到一处）。
+
+**架构**
+- Xcode 里加 watchOS target：工程 → + → watchOS → App → "Watch app for Existing iOS App"（Xcode 14 起单一 target，无 extension）；最低 watchOS 10（Series 4 及以上能装；Xcode 27 只能在 watchOS 10+ 真机调试）。名字不能和 iOS target 相同，叫 `WorkoutWatch`。
+- 手机 → 手表：`WCSession.updateApplicationContext`（只保留最新一份，对方没在跑也能发，下次醒来就有）。内容 = 网页的 `native.state` 扩成**完整训练状态**：`{ inTraining, title, activeId, restStartedAt, exercises: [{ id, name, setsTarget, setsDone, weight, reps, restSeconds }] }`（几百字节）。不训练时发 `{ inTraining:false, today: "推日" | "休息" }`。
+- 手表 → 手机：`WCSession.sendMessage`。Apple 文档：手表 App 在前台或高优先级后台时调用，**会在后台唤醒手机 App**；对方不可达则报错、不排队。
+- 手机后台时网页 JS 是停的，所以**原生自己维护一份影子状态**（AppState 存整个 exercises 列表）：收到手表的"完成一组"→ 影子 setsDone+1、restStartedAt=now、按该动作 restSeconds 重排组间通知、立刻把新状态推回手表；同时命令带时间戳进现有的 CommandQueue，手机回前台网页按原时间戳补记（`handleNativeCommand` 已支持 `at`）。"下一个动作"同理：影子 activeId 切到列表里下一个没做完的。这样手机在口袋里也能全程用手表操作，网页回来后一致。
+- 手表界面（SwiftUI，一屏）：大字秒表（`Text(timerInterval:)`，不用定时器）+ 参考时长、进行中动作名 + 第 N/M 组 + 预填重量×次数、下一个动作名、按钮"完成一组""下一个动作"。不训练时显示"今天 推日"+ 动作清单。
+- 手表保活：默认不用 HealthKit。让用户把 手表 设置 → 通用 → 返回表盘 → 训练 → 1 小时后，训练中抬腕就是 App。可选项（第 6 步）：训练开始时启动 `HKWorkoutSession`（力量训练），App 在后台持续运行、抬腕回到 App、顺便记进健康 App 带心率；HealthKit 能力免费账号也有，但要 Info.plist `WKBackgroundModes = workout-processing` + 健康权限。
+- 表盘（复杂功能 = WidgetKit accessory 小组件，watchOS 9+）：`accessoryRectangular`（动作名 + 秒表）、`accessoryCircular`（秒表环）、`accessoryInline`（"推日 · 下一个 引体向上"）。秒表用 `Text(timerInterval:)` 自己走、不用刷新；数据走 App Group 的 UserDefaults（手表 App 收到状态就写 + `WidgetCenter.reloadAllTimelines()`，表盘上的小组件每天约 75 次刷新额度，手表 App 在前台时刷新不计）。限制：小组件没有按钮，点它打开手表 App；`transferCurrentComplicationUserInfo` 对 WidgetKit 小组件不生效（Apple 工程师 2024），所以表盘只在手表 App 收过数据后更新——用户本来就在手表 App 上点"完成一组"，够用。
+
+**前提**
+- 手表型号：watchOS 26 要 Series 6 / SE 2 / Ultra 起；watchOS 27 要 Series 9 / SE 3 / Ultra 2 起；最低部署 watchOS 10 则 Series 4 起能装。
+- 调试：手表要和插在 Mac 上的 iPhone 配对，手机和手表都开开发者模式（手表：设置 → 隐私与安全性 → 开发者模式），Mac 通过手机隧道连手表；手表要亮着解锁。
+- 免费 Personal Team 能装到真手表（iOS + 手表算一个 App；3 个 App / 设备、7 天过期要重装）；TestFlight 要付费账号，手表 App 随 iOS App 一起上传，测试员在 TestFlight App 的 App 详情页里装手表端（要 watchOS 9+）。
+
+**实施步骤**（每步一验收一提交）
+1. 网页端（Windows 上做、浏览器验收）：`native.state` 扩成完整训练状态；`backup.save` 调用点；App 版隐藏备份提醒。
+2. iOS：`backup.save` 写 Documents + Info.plist 两个 key；首次启动空库 + 有文件 → 恢复提示。验收：文件 App 里看到 训练/训练备份.json；删库重装后能恢复。
+3. Xcode 加 `WorkoutWatch` target，空页面"训练"，装到真手表。验收：手表上打开有字。
+4. WCSession：手机发完整状态，手表显示今天计划 / 进行中动作 / 秒表。验收：手机上记一组，手表 2 秒内变。
+5. 手表"完成一组 / 下一个动作"：影子状态 + 队列 + 通知重排。验收：手机锁屏放口袋，手表记两组，到点手表震，手机解锁后网页里两组都在、时间对。
+6. 表盘小组件三种尺寸 + App Group。验收：加到表盘，训练中显示动作和秒表，点开 App。
+7. （可选）HKWorkoutSession 保活 + 记进健康。
+8. TestFlight 带手表 App。
