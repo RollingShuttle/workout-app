@@ -24,6 +24,7 @@
 - 2026-10-24：结束训练的汇总表单（spec 3.2）：总组数、用时、每个动作的状态 / 组数 / 最佳组，"保存并结束"才写库，"继续训练"回去接着练。**spec 的功能项全部完成。**
 - 2026-10-25：真机反馈两条：连点 ± 按钮页面放大缩小（iOS 双击缩放）→ 全局 touch-action: manipulation；数值要能手动输入任意数（器械档位不是 1 / 2.5）→ step="any"，± 只在当前值上加减不再对齐档位。
 - 2026-10-25：Apple Health 的打球 / 二区 / 散步可以同步进来：手机上用快捷指令导出"运动记录.txt"（搭建步骤 docs/shortcut-apple-health.md），设置页"导入 Apple Health 运动记录"选文件 → 预览每条"记为"→ 入库，自动去重。
+- 2026-11-07：Mac 上 Xcode 编译通过，真机能跑；第一个运行时崩溃（网页 state 里的 null 存 UserDefaults）已修。
 - 2026-11-07：iOS 壳写好了（`ios/`，在 Windows 上写的，还没在 Xcode 里编译过）：Xcode 工程、WKWebView + `app://local/` 自定义 scheme、JS 对话框、Bridge（协议 3.4 全部消息）、本地通知、App Intents（完成一组 / 重置秒表 / 下一个动作 / 开始训练 + Siri 短语）、分享导出 / 文件导入、构建时复制网页的脚本、README。下一步在 Mac 上打开 `ios/WorkoutShell.xcodeproj`，按 ios/README.md 验收第 1 步起。
 - 2026-11-02：iOS App 的网页端部分做完（native.js 桥接、组间通知调用点、训练日提醒设置、原生命令处理、导出导入先问原生）；PWA 版没原生时全是空操作。用户决定不做耳机键，组间提示靠本地通知。
 - 2026-11-02：写了 iOS App 方案 `docs/ios-app-plan.md`：Swift + WKWebView 壳复用全部网页代码，原生只做桥接、本地通知（组间到点 / 训练日）、App Intents（轻点背面 / 动作按钮 / Siri 完成一组）、可选的耳机媒体键（会接管播放、和听歌互斥）、原生导出导入；TestFlight 分发；8 步实施各带验收。
@@ -53,6 +54,8 @@
 - 功能项已做完；后面按"以后再说"和真机使用中的反馈来。
 
 ## 日志（每步追加一行：日期 · 做了什么 · 验收结果 · 下一步）
+
+- 2026-11-07 · iOS 壳第一次在 Mac 上跑：编译通过、装到 iPhone 上启动；崩在 AppState.update（网页 `native.state` 里 activeExercise 为 null → NSNull → UserDefaults.set 抛 "non-property list object"）→ 只保留 String / NSNumber 值，其余跳过；查过 CommandQueue 只存原生自己拼的 name / at，无同类问题 · 验收：待 Mac 上重跑 · README 验收第 1 步起
 
 - 2026-11-07 · iOS 壳（Windows 上写，未编译）：ios/WorkoutShell.xcodeproj（手写 pbxproj：一个 App target，iOS 17，SwiftUI 生命周期，生成式 Info.plist，显示名"训练"，Bundle ID 占位 com.mikeyang.workout，Automatic 签名，ENABLE_USER_SCRIPT_SANDBOXING=NO 让脚本能写 bundle，Copy web files 脚本阶段 alwaysOutOfDate）、copy-web.sh（把根目录 html / js / css / json / icons 复制进 bundle 的 web/，不带 sw.js）、WorkoutShellApp.swift（WindowGroup + WebContainerView 铺满）、AppDelegate.swift（通知代理前台也显示横幅 + 声音；willEnterForeground 发 foreground 事件）、WebView.swift（WKWebView：自定义 scheme、消息处理器 native、contentInsetAdjustmentBehavior .never、DEBUG 下 isInspectable；JS alert / confirm / prompt 弹 UIAlertController；http(s) 外链 SFSafariViewController；网页进程被杀自动重载）、AppSchemeHandler.swift（app://local/ → bundle web/，按扩展名给 MIME，防 ../，404）、Bridge.swift（ready → hello 带 caps；restTimer / reminders / keepAwake / haptic / export / import / state；deliver 命令：网页 ready 直接发，否则存 UserDefaults 队列、ready 后带原时间戳补发）、Notifications.swift（权限第一次用到才申请；组间一条 id rest，UNTimeIntervalNotificationTrigger，sound 可选；训练日按日期 UNCalendarNotificationTrigger，id reminder-日期，不在新列表里的删掉）、Intents.swift（四个 AppIntent，completeSet 等三个 openAppWhenRun=false，回话按 AppState 说"已给 X 记一组"；AppShortcutsProvider 中英文短语）、AppState.swift（网页 state 存 UserDefaults）、NativeHelpers.swift（震动、UIActivityViewController 导出、UIDocumentPickerViewController 导入、最上层 VC）、Assets 图标 1024、README · 决定：不用 Capacitor；网页只有仓库根目录一份，构建时复制；耳机键不做 · 验收：无法在 Windows 上编译，Mac 上按 ios/README.md 过 · Mac 上编译 + 第 1 步
 

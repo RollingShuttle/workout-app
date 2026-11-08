@@ -14,9 +14,15 @@ final class AppState {
         UserDefaults.standard.dictionary(forKey: key) ?? [:]
     }
 
+    // 网页里的 null 过来是 NSNull，UserDefaults 存不了会崩；只留字符串 / 数字 / 布尔
     func update(from body: [String: Any]) {
         var dict: [String: Any] = [:]
-        for (k, v) in body where k != "type" { dict[k] = v }
+        for (k, v) in body where k != "type" {
+            switch v {
+            case is String, is NSNumber: dict[k] = v
+            default: continue
+            }
+        }
         UserDefaults.standard.set(dict, forKey: key)
     }
 }
