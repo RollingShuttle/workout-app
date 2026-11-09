@@ -41,19 +41,40 @@ Debug 构建开了 `isInspectable`：Mac 上 Safari → 开发 → 你的 iPhone
 1. 双击 `update-mac.command` 拉最新代码。
 2. Xcode 顶部设备选 **Any iOS Device (arm64)**（设备列表最上面）。
 3. 菜单 **Product → Archive**，等打包完弹出 Organizer 窗口。
-4. 选中最新那条 → 右边 **Distribute App** → 选 **TestFlight Internal Only** → Distribute（中间有"Manage Version and Build Number"之类的勾就留着，它会自动把 Build 号 +1）。等它上传完显示 Uploaded。
-5. 回 App Store Connect → 我的 App → 这个 App → 顶部 **TestFlight** 标签。几分钟后构建出现，状态从"正在处理"变成可用。如果构建旁边写 **缺少合规证明**：点"管理" → 选"上述算法都没有使用"（App 不自己做加密）→ 保存。
+4. 选中最新那条 → 右边 **Distribute App** → 选 **TestFlight Internal Only** → Distribute。**Build 号必须比上一次上传的高**，同一个号传第二次会被 App Store Connect 拒掉：Distribute 中间"Manage Version and Build Number"那个勾留着，它会自动把 Build 号 +1；不想靠这个勾，就在工程里把 CURRENT_PROJECT_VERSION 改成更大的数再 Archive。等它上传完显示 Uploaded。
+5. 回 App Store Connect → 我的 App → 这个 App → 顶部 **TestFlight** 标签。几分钟后构建出现，状态从"正在处理"变成可用。出口合规那一问（"缺少合规证明"）已经在工程里答掉了（pbxproj 的 `INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO`，App 不自己做加密），不会再出现，不用点。
 6. 第一次：左边 **内部测试** → **+** 建一个组（比如"家人"）→ 勾上自己和太太 → 打开"自动分发"。以后每个新构建会自动推给这个组。
 7. 手机上 TestFlight App 里出现"训练"→ 安装。TestFlight 装的会直接覆盖原来 Xcode 装的（同一个 Team、同一个套装 ID），记录不丢。以后有新版本 TestFlight 会提醒更新。
 
 注意：第一次用 TestFlight 覆盖前，稳妥起见先在 App 里 设置 → 导出 存一份；万一 TestFlight 报"无法安装"，是因为旧的是别的 Team 签的，删掉旧 App（会连数据一起删）再装，然后用 设置 → 导入 恢复。
+
+装上 TestFlight 的版本之后，Xcode 用数据线装的那份的有效期（免费账号 7 天、付费账号 1 年，到期就打不开）就不相干了：TestFlight 装的只看构建自己的 90 天，而且下面的 Xcode Cloud 每周出一个新构建，等于永远不到期。第二台手机也不用开"开发者模式"——那只是 Xcode 直接装才要的，TestFlight 装不要。
+
+### Xcode Cloud（可选，自动构建）
+
+上面"每次发新版本"每次都得坐到 Mac 前面点一遍。开了 Xcode Cloud，每次 `git push origin main` 都在 Apple 的云上打包、签名、上传，半小时左右两台手机的 TestFlight 里就有新版本，Mac 不用开机。开发者会员已经包含每月 25 小时的云构建时间，这个工程一次几分钟，用不完。
+
+只做一次（第一个工作流只能在 Xcode 里建，建好以后 App Store Connect 网页上也能改）：
+1. 先把上面"只做一次的准备"做完——App Store Connect 里得有这个 App；工程已经是 Automatic 签名，Xcode Cloud 要求这个。Scheme 也已经是共享的（`ios/WorkoutShell.xcodeproj/xcshareddata/xcschemes/` 在仓库里），Xcode Cloud 只认共享的 scheme；万一 Xcode 里显示它没共享，Product → Scheme → Manage Schemes… 勾上 Shared，再把那个文件夹提交进仓库。
+2. Xcode 打开工程 → 菜单 **Product → Xcode Cloud → Create Workflow…** → Next，照着走：
+   - 源代码管理：选 GitHub，按提示授权 Xcode Cloud 访问 `RollingShuttle/workout-app`（会跳到 GitHub 装一个 Xcode Cloud App，只勾这一个仓库就行）。
+   - **Start Conditions**（开始条件）：留着默认的 **Branch Changes**（main 分支有改动），再加一条 **On a Schedule for a Branch**：分支 main，每周一次（星期几、几点随便）。
+   - **Archive - iOS**：Deployment Preparation 选 **TestFlight (Internal Testing Only)**。
+   - **Post-Actions**（后置操作）：加 **TestFlight Internal Testing**，勾上面建的内部测试组（"家人"）。
+   - Build 号不用管：Xcode Cloud 自己给每次构建一个递增的号，不会和上一次撞。
+3. 保存，它会马上跑第一次；进度在 Xcode 的 Report navigator → Cloud 标签，或 App Store Connect → 这个 App → **Xcode Cloud** 标签里看。
+
+之后：
+- 改完代码 `git push origin main`（在 Windows 上 push 也一样），云上编完上传，TestFlight 处理完自动推给组里两台手机，手机上 TestFlight 提示更新，全程不碰 Mac。
+- 每周那次定时构建就算代码没变也会出一个新构建，TestFlight 的 90 天有效期于是永远走不完，手机上的 App 不会过期。
+- 这个工程没有任何第三方依赖（网页文件是 `copy-web.sh` 在构建阶段复制进 bundle 的），所以不需要 `ci_scripts/`，云上用默认环境直接能编。
 
 ## 文件
 
 - `WorkoutShell/WorkoutShellApp.swift` 入口；`AppDelegate.swift` 通知代理、回前台
 - `WebView.swift` WKWebView、JS 对话框、外链；`AppSchemeHandler.swift` `app://local/` 静态文件
 - `Bridge.swift` 消息路由、命令队列；`Notifications.swift`；`Intents.swift`；`AppState.swift` 网页同步来的完整训练状态；`NativeHelpers.swift` 震动 / 分享 / 导入；`BackupStore.swift` 自动备份文件；`RestAlert.swift` 前台到点的震动 + 铃声；`rest-alert.wav` / `rest-silent.wav` 通知音
-- `copy-web.sh` 构建时复制网页；`Assets.xcassets` 图标
+- `copy-web.sh` 构建时复制网页；`Assets.xcassets` 图标；`PrivacyInfo.xcprivacy` 隐私清单（备份读文件修改时间、UserDefaults 都在 Apple 的"需要说明理由"名单上，没有它每次上传 TestFlight 都会收到 ITMS-91053 邮件）
 
 ## 不做的
 
