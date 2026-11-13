@@ -1,8 +1,9 @@
 // history-view.js — 历史列表、单次训练详情、动作折线。只画 DOM；数据由 app.js 传入。
 import { el, replaceChildren } from './dom.js';
 import { WEEKDAY_LABELS, parseDateKey, formatLoad } from './schedule.js';
-import { formatSets } from './history.js';
+import { formatSets, setsOfExercise } from './history.js';
 import { findExercise, effectiveExercise, activeDurationMs } from './workout.js';
+import { exerciseById } from './exercise-library.js';
 import { formatWeightDual, lbToDisplay, displayToLb, displayUnit } from './units.js';
 import { describeActivity, findCardio } from './activity.js';
 
@@ -86,9 +87,10 @@ export function renderSessionDetail(root, { session, plan, onOpenExercise, onEdi
   const template = (plan.dayTemplates || []).find((t) => t.id === session.templateId) || null;
   const minutes = durationMinutes(session);
   const rows = (session.entries || []).map((entry) => {
-    const base = template ? findExercise(template, entry.exerciseId) : null;
-    const ex = base ? effectiveExercise(entry, base) : null;
-    const name = ex ? ex.name : entry.usedAlternate || entry.exerciseId;
+    // 训练日里删掉的动作还在动作库里，名字照样认得
+    const base = (template ? findExercise(template, entry.exerciseId) : null) || exerciseById(plan, entry.exerciseId);
+    const ex = base ? effectiveExercise(entry, base, template || plan) : null;
+    const name = ex ? ex.name : entry.exerciseId;
     const bodyweight = Boolean(ex && (ex.load || {}).bodyweight);
     const status = STATUS_LABEL[entry.status] || entry.status;
     const setsText = entry.sets.length ? formatSets(entry.sets, { bodyweight, countUnit: base ? base.countUnit : null, dual: true }) : '—';
@@ -97,7 +99,7 @@ export function renderSessionDetail(root, { session, plan, onOpenExercise, onEdi
         el('span', { class: 'hist-ex-name', text: name }),
         el('span', { class: 'hist-ex-status', text: status }),
         el('span', { class: 'hist-ex-sets', text: setsText }),
-        entry.usedAlternate && base ? el('span', { class: 'hist-ex-alt', text: `替代 ${base.name}` }) : null,
+        entry.alternateId && base ? el('span', { class: 'hist-ex-alt', text: `替代 ${base.name}` }) : null,
       ]),
       // 改已录入的记录：替代动作、每组重量 / 次数、增删组
       onEditEntry ? el('button', { class: 'btn-secondary hist-ex-edit', type: 'button', onclick: () => onEditEntry(entry.exerciseId) }, '编辑') : null,
@@ -131,12 +133,17 @@ function toNum(v) {
   return Number.isFinite(n) ? n : NaN;
 }
 
-// base：计划里的动作（可能已删掉 → null，此时只能改组）。保存时 onSave({ usedAlternate, sets: [{ weight(lb), reps }] })
-export function renderEntryEditSheet(root, { entry, base, onSave, onClose }) {
+// base：计划里的动作（动作库里也找不到 → null，此时只能改组）；currentAlt：这条记录现在的替代动作（动作库里查的）。
+// 保存时 onSave({ alternateId, sets: [{ weight(lb), reps }] })；没有"做的是哪个动作"选框时替代动作保持不变
+export function renderEntryEditSheet(root, { entry, base, currentAlt = null, onSave, onClose }) {
   const load = base ? base.load || {} : {};
   const bodyweight = Boolean(load.bodyweight);
   const byDistance = Boolean(base && base.countUnit === 'm');
-  const alternates = base ? base.alternates || [] : [];
+  const alternates = [...(base ? base.alternates || [] : [])];
+  // 替代关系后来删了：选项里补上现在这个，不然一保存就被改回原动作
+  if (entry.alternateId && !alternates.some((a) => a.id === entry.alternateId)) {
+    alternates.push(currentAlt ? { id: currentAlt.id, name: currentAlt.name } : { id: entry.alternateId, name: entry.alternateId });
+  }
   const unit = displayUnit();
   let sets = entry.sets.map((s) => ({ weight: s.weight == null ? null : lbToDisplay(s.weight), reps: s.reps ?? null }));
   const errEl = el('p', { class: 'set-error', 'aria-live': 'polite' });
@@ -200,7 +207,7 @@ export function renderEntryEditSheet(root, { entry, base, onSave, onClose }) {
     }
     const altSel = root.querySelector('#es-alt');
     document.removeEventListener('keydown', onKey);
-    onSave({ usedAlternate: altSel && altSel.value ? altSel.value : null, sets: out });
+    onSave({ alternateId: altSel ? altSel.value || null : entry.alternateId || null, sets: out });
     return undefined;
   };
   const sheet = el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': '修改记录', tabindex: '-1' }, [
@@ -209,8 +216,8 @@ export function renderEntryEditSheet(root, { entry, base, onSave, onClose }) {
       ? el('div', { class: 'field' }, [
           el('label', { class: 'field-label', for: 'es-alt', text: '做的是哪个动作' }),
           el('select', { class: 'sheet-select', id: 'es-alt' }, [
-            el('option', { value: '', selected: !entry.usedAlternate }, `原动作：${base.name}`),
-            ...alternates.map((a) => el('option', { value: a.name, selected: entry.usedAlternate === a.name }, a.name)),
+            el('option', { value: '', selected: !entry.alternateId }, `原动作：${base.name}`),
+            ...alternates.map((a) => el('option', { value: a.id, selected: entry.alternateId === a.id }, a.name)),
           ]),
         ])
       : null,
@@ -229,17 +236,15 @@ export function renderEntryEditSheet(root, { entry, base, onSave, onClose }) {
 
 /* ---------- 动作折线 ---------- */
 
-// 某个动作在每次已完成训练里的数据点（只看原动作口径，即 set.usedAlternate 为空的组），按时间正序
+// 某个动作在每次已完成训练里的数据点（按实际做的动作，即动作库 id），按时间正序
 export function exerciseSeries(sessions, exerciseId, { assisted = false } = {}) {
   const points = [];
-  let alternateOnly = 0; // 这次只用替代动作做了，不进折线
+  let alternateOnly = 0; // 计划里是这个动作、这次却只做了替代动作：不进这条折线
   for (const s of sessions) {
     if (!s.finishedAt) continue;
-    const entry = (s.entries || []).find((e) => e.exerciseId === exerciseId);
-    if (!entry || !(entry.sets || []).length) continue;
-    const sets = entry.sets.filter((set) => (set.usedAlternate ?? null) === null);
+    const sets = setsOfExercise(s, exerciseId);
     if (!sets.length) {
-      alternateOnly += 1;
+      if ((s.entries || []).some((e) => e.exerciseId === exerciseId && (e.sets || []).length)) alternateOnly += 1;
       continue;
     }
     const weights = sets.map((set) => set.weight).filter((w) => typeof w === 'number');
@@ -314,10 +319,10 @@ export function renderLineChart(values, labels, { unit = '' } = {}) {
 }
 
 export function renderExerciseChart(root, { exerciseId, plan, sessions, loading, onBack }) {
-  let base = null;
+  let base = exerciseById(plan, exerciseId);
   for (const t of plan.dayTemplates || []) {
-    base = findExercise(t, exerciseId);
     if (base) break;
+    base = findExercise(t, exerciseId);
   }
   const name = base ? base.name : exerciseId;
   const load = base ? base.load || {} : {};

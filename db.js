@@ -123,6 +123,34 @@ export function putSessions(sessions) {
   return withStore('sessions', 'readwrite', (store) => Promise.all(sessions.map((s) => requestToPromise(store.put(s))))).then(notifyWrite);
 }
 
+// 动作库迁移用：计划和改过的记录在同一个事务里写，要么都写进去要么都不写（中途被杀不会只写一半）
+export async function putPlanAndSessions(planKey, planValue, sessions, retried = false) {
+  const db = await openDb();
+  let tx;
+  try {
+    tx = db.transaction(['sessions', 'settings'], 'readwrite');
+  } catch (err) {
+    if (!retried) {
+      dbPromise = null;
+      try {
+        db.close();
+      } catch (_) {
+        /* 已关 */
+      }
+      return putPlanAndSessions(planKey, planValue, sessions, true);
+    }
+    throw err;
+  }
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || new Error('事务失败'));
+    tx.onabort = () => reject(tx.error || new Error('事务中止'));
+    const store = tx.objectStore('sessions');
+    for (const s of sessions) store.put(s);
+    tx.objectStore('settings').put({ key: planKey, value: planValue });
+  }).then(notifyWrite);
+}
+
 // 清空（覆盖导入 / 清空数据用）：整张表，不分测试模式
 export function clearSessions() {
   return withStore('sessions', 'readwrite', (store) => requestToPromise(store.clear())).then(notifyWrite);
@@ -146,6 +174,11 @@ export async function isPersisted() {
 // 保证 ?date= 测试模式的记录（test:true）和真实训练永远分开。
 function getAllSessions() {
   return withStore('sessions', 'readonly', (store) => requestToPromise(store.getAll()));
+}
+
+// 只给动作库迁移用（docs/exercise-library-plan.md）：真实和测试模式的记录要一起换成新格式
+export function listAllSessionsForMigration() {
+  return getAllSessions();
 }
 
 // 某一模式下的全部训练（含草稿），按开始时间倒序。以后历史列表、导出、备份提醒计数都从这里读。

@@ -62,12 +62,12 @@ function renderSetInputs(entry, base, ex, ctx, handlers) {
   const load = ex.load || {};
   const bodyweight = Boolean(load.bodyweight);
   const setIndex = entry.sets.length;
-  const alt = entry.usedAlternate ?? null;
+  const alt = entry.alternateId || null;
   const pre = ctx.prefill(entry, ex);
   const t = ctx.inputs;
-  // 暂存值只在同一次训练、同一动作、同一替代口径、同一组号下才拿来用
+  // 暂存值只在同一次训练、同一动作、同一替代动作、同一组号下才拿来用
   const typed =
-    t && t.sessionId === ctx.sessionId && t.exerciseId === base.id && (t.usedAlternate ?? null) === alt && t.setIndex === setIndex
+    t && t.sessionId === ctx.sessionId && t.exerciseId === base.id && (t.alternateId || null) === alt && t.setIndex === setIndex
       ? t
       : {};
   const weightVal = 'weight' in typed ? typed.weight : lbToDisplay(pre.weight); // 输入框里的值按显示单位
@@ -77,7 +77,7 @@ function renderSetInputs(entry, base, ex, ctx, handlers) {
   const errEl = el('p', { class: 'set-error', 'aria-live': 'polite' });
   const onChange = (field) => (value) => {
     errEl.textContent = ''; // 改值就清提示；下次报错是从空变有，VoiceOver 才会读
-    handlers.onInput({ sessionId: ctx.sessionId, exerciseId: base.id, usedAlternate: alt, setIndex }, field, value);
+    handlers.onInput({ sessionId: ctx.sessionId, exerciseId: base.id, alternateId: alt, setIndex }, field, value);
   };
   const last = ctx.last(entry);
   const fields = [];
@@ -108,7 +108,7 @@ export function updateLastRef(root, session, template, lastFor) {
     const base = entry && findExercise(template, entry.exerciseId);
     const line = rowEl.querySelector('.last-ref');
     if (!entry || !base || !line) return;
-    const ex = effectiveExercise(entry, base);
+    const ex = effectiveExercise(entry, base, template);
     line.textContent = lastRefText(lastFor(entry), Boolean((ex.load || {}).bodyweight), true, base.countUnit);
   });
 }
@@ -131,14 +131,14 @@ function renderRow(entry, template, handlers, ctx) {
   if (!base) {
     return el('li', { class: 'train-row' }, el('p', { class: 'problem', text: `找不到动作 ${entry.exerciseId}` }));
   }
-  const ex = effectiveExercise(entry, base); // 选了替代动作就显示替代动作的名字和重量
+  const ex = effectiveExercise(entry, base, template); // 选了替代动作就显示替代动作的名字和重量
   const done = entry.status === 'done';
   const skipped = entry.status === 'skipped';
   const active = entry.status === 'active';
   const count = skipped ? '已跳过' : `${completedSets(entry, base)}/${targetSets(base, entry)}`;
   // 每侧动作：两侧都做完再按一次"完成一组"，所以这里只提示"每侧"，不分左右
   const metaParts = [formatLoad(ex.load), `${formatRange(base.reps)} ${base.countUnit === 'm' ? '米' : '次'}`, base.perSide ? '每侧' : null];
-  if (entry.usedAlternate) metaParts.unshift(`替代 ${base.name}`);
+  if (entry.alternateId) metaParts.unshift(`替代 ${base.name}`);
   const meta = metaParts.filter(Boolean).join(' · ');
   const undoLabel = canCancelExtraSet(entry, base) ? '取消再加一组' : '撤销最后一组';
   const sets = base.sets || {};
@@ -228,15 +228,15 @@ export function renderAlternateSheet(root, { entry, exercise, onPick, onClose })
     document.removeEventListener('keydown', onKey);
     onClose();
   };
-  const pick = (name) => {
+  const pick = (altId) => {
     document.removeEventListener('keydown', onKey);
-    onPick(name);
+    onPick(altId);
   };
   const sheet = el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': '换替代动作', tabindex: '-1' }, [
         el('div', { class: 'sheet-title', text: `${exercise.name} · 换替代动作` }),
-        item(`原动作：${exercise.name}`, formatLoad(exercise.load), () => pick(null), !entry.usedAlternate),
+        item(`原动作：${exercise.name}`, formatLoad(exercise.load), () => pick(null), !entry.alternateId),
         ...(exercise.alternates || []).map((a) =>
-          item(a.name, a.load ? formatLoad(a.load) : '重量未填', () => pick(a.name), entry.usedAlternate === a.name)
+          item(a.name, a.load && (a.load.value != null || a.load.bodyweight) ? formatLoad(a.load) : '重量未填', () => pick(a.id), entry.alternateId === a.id)
         ),
         el('button', { class: 'btn-secondary sheet-cancel', type: 'button', onclick: close }, '取消'),
       ]);
@@ -267,7 +267,7 @@ export function restClockState(session, template, now, defaultRest = 90) {
   const reference = restReferenceSeconds(session, template, defaultRest);
   const base = session.lastSetExerciseId ? findExercise(template, session.lastSetExerciseId) : null;
   const entry = session.lastSetExerciseId ? findEntry(session, session.lastSetExerciseId) : null;
-  const exercise = base && entry ? effectiveExercise(entry, base) : base; // 换了替代动作就显示替代动作名
+  const exercise = base && entry ? effectiveExercise(entry, base, template) : base; // 换了替代动作就显示替代动作名
   // 已经点到别的动作上了：这段是动作之间的休息，标题不再写上一个动作的名字（2026-10-26 用户要求）
   const between = Boolean(session.activeExerciseId && session.lastSetExerciseId && session.activeExerciseId !== session.lastSetExerciseId);
   return {

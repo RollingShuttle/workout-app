@@ -52,7 +52,7 @@
 | `sets` | `{min, max}`；目标组数 = max；做满 min 组后允许手动"结束动作" |
 | `reps` | `{min, max}` 次数区间 |
 | `restSeconds` | 这个动作的参考休息秒数（覆盖默认值）；秒表到达这个值时变色提示，不强制 |
-| `alternates[]` | 替代动作列表 `{name, load?}`；选用后当次记录以替代动作名保存 |
+| `alternates[]` | 替代动作：2026-11-12 起是动作库里别的动作的 id，见 docs/exercise-library-plan.md（原来是 `{name, load?}`） |
 | `notes` | 执行提示（顶端停 1 秒、打球周减量等） |
 
 ### 2.3 WorkoutSession（一次训练的记录）
@@ -64,7 +64,7 @@
   activityKind: "strength" | "cardio" | "ball" | "rest",
   entries: [
     {
-      exerciseId, usedAlternate?: string,
+      exerciseId, alternateId?: string,   // 2026-11-12 起：替代动作的动作库 id（原 usedAlternate 存名字）；每组另有 exerciseId = 实际做的动作
       sets: [ { setNo, weight, reps, side?: "L"|"R", completedAt, restTakenSeconds } ],
       status: "done" | "partial" | "skipped"
     }

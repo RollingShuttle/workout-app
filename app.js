@@ -36,13 +36,13 @@ import {
   restReferenceSeconds,
 } from './workout.js';
 import { renderTrain, renderTrainUnavailable, renderAlternateSheet, renderFinishSheet, updateRestClock, updateLastRef, restClockState, formatClock } from './train-view.js';
-import { putSession, deleteSession, findDraft, listSessions, requestPersistentStorage, putSessions, clearSessions, clearSettings, isPersisted, getSetting, putSetting, onWrite } from './db.js';
+import { putSession, deleteSession, findDraft, listSessions, listAllSessionsForMigration, requestPersistentStorage, putSessions, clearSessions, clearSettings, isPersisted, getSetting, putSetting, onWrite } from './db.js';
 import { lastSetsFor, prefillFor, formatSets } from './history.js';
 import { renderHistoryList, renderSessionDetail, renderExerciseChart, renderEntryEditSheet, sessionTypeName } from './history-view.js';
 import { suggestionFor } from './progression.js';
 import { createActivitySession, weekSummary, ballCountThisWeek, BALL_WEEKLY_LIMIT, activitiesOn, findCardio } from './activity.js';
 import { renderActivitySheet, renderWeekStrip, renderTodayActivities } from './activity-view.js';
-import { loadStoredPlan, savePlan, blankPlanFrom } from './plan-store.js';
+import { loadStoredPlan, savePlan, savePlanWithSessions, blankPlanFrom } from './plan-store.js';
 import {
   setWeekday,
   upsertOverride,
@@ -65,9 +65,11 @@ import { parseWorkoutsFile, guessKind, conflictWith, sessionFromItem } from './h
 import { applySkip, setDayTo, undoOverride } from './skip-day.js';
 import { renderSkipSheet } from './skip-view.js';
 import { native } from './native.js';
+import { migrateData, ensureLibraryPlan, expandPlan, compactPlan, isLibraryPlan, isOldSession, currentExerciseId, withKeptLibrary, adoptReferencedExercises, exerciseById } from './exercise-library.js';
 
-const APP_VERSION = '0.24.0';
+const APP_VERSION = '0.25.0';
 const BACKUP_META_KEY = 'backup';
+const PRE_LIBRARY_KEY = 'preLibraryBackup'; // 动作库迁移前的计划和记录原样（docs/exercise-library-plan.md），出问题能找回
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
 // 全局状态：计划、当前"今天"、进行中的训练、最近一次保存错误（null = 正常）。
@@ -168,7 +170,7 @@ function ensureHistory() {
   state.historyLoaded = true;
   listSessions({ test: state.isTest }).then(
     (rows) => {
-      state.history = rows;
+      state.history = upgradeSessions(rows);
       state.historyReady = true;
       const view = currentView();
       if (view === 'train') {
@@ -198,7 +200,29 @@ function retryHistory() {
 }
 
 function lastFor(entry) {
-  return lastSetsFor(state.history, entry.exerciseId, entry.usedAlternate, state.session ? state.session.id : null);
+  return lastSetsFor(state.history, currentExerciseId(entry), state.session ? state.session.id : null);
+}
+
+// 旧版记录（替代动作只存名字）读进来时按当前动作库换成新格式；正常情况下启动时已经在库里换过，这里只是兜底
+function upgradeSessions(rows) {
+  if (!rows.some(isOldSession) || !isLibraryPlan(state.plan)) return rows;
+  return migrateData({ plan: compactPlan(state.plan), sessions: rows }).sessions;
+}
+
+function upgradeSession(row) {
+  return row ? upgradeSessions([row])[0] : row;
+}
+
+// 动作库迁移（2026-11-12）：库里还是旧计划、或者还有旧格式的记录（上次没换完）时，计划和全部记录（真实 + 测试模式）
+// 一起换成新格式，在一个事务里写；第一次换之前把计划和记录原样存一份。返回存储形状的计划
+async function migrateStoredData(plan) {
+  const sessions = await listAllSessionsForMigration();
+  if (isLibraryPlan(plan) && !sessions.some(isOldSession)) return plan;
+  const saved = await getSetting(PRE_LIBRARY_KEY);
+  if (!saved) await putSetting(PRE_LIBRARY_KEY, { savedAt: Date.now(), plan, sessions });
+  const result = migrateData({ plan, sessions });
+  if (result.planChanged || result.sessionsChanged.length) await savePlanWithSessions(result.plan, result.sessionsChanged);
+  return result.plan;
 }
 
 function sessionMatches(session, day) {
@@ -703,8 +727,8 @@ function leaveTraining() {
 function finishRows(session, template) {
   return session.entries.map((entry) => {
     const base = template ? findExercise(template, entry.exerciseId) : null;
-    const ex = base ? effectiveExercise(entry, base) : null;
-    const name = ex ? ex.name : entry.usedAlternate || entry.exerciseId;
+    const ex = base ? effectiveExercise(entry, base, template) : null;
+    const name = ex ? ex.name : entry.exerciseId;
     const load = ex ? ex.load || {} : {};
     const n = entry.sets.length;
     const best = n ? bestSetOf(entry.sets, load) : null;
@@ -834,7 +858,7 @@ function renderTrainView(root, day) {
         state.inputs &&
         state.inputs.sessionId === key.sessionId &&
         state.inputs.exerciseId === key.exerciseId &&
-        (state.inputs.usedAlternate ?? null) === (key.usedAlternate ?? null) &&
+        (state.inputs.alternateId || null) === (key.alternateId || null) &&
         state.inputs.setIndex === key.setIndex;
       if (!same) state.inputs = { ...key };
       state.inputs[field] = value;
@@ -867,9 +891,9 @@ function renderTrainView(root, day) {
       renderAlternateSheet(root, {
         entry,
         exercise,
-        onPick: (name) => {
+        onPick: (altId) => {
           state.picker = null;
-          const next = setAlternate(state.session, template, entry.exerciseId, name);
+          const next = setAlternate(state.session, template, entry.exerciseId, altId);
           if (next === state.session) {
             render(); // 选的还是当前这个，输入框里的值保留
           } else {
@@ -962,23 +986,23 @@ async function putHistorySession(next) {
   render();
 }
 
-// 改一个动作的记录：替代动作、每组重量 / 次数、组数；状态按组数重算
-function saveEntryEdit(session, exerciseId, { usedAlternate, sets }) {
+// 改一个动作的记录：做的是哪个动作（原动作 / 替代动作 id）、每组重量 / 次数、组数；状态按组数重算
+function saveEntryEdit(session, exerciseId, { alternateId, sets }) {
   const template = findTemplate(session.templateId);
-  const base = template ? findExercise(template, exerciseId) : null;
+  const base = (template ? findExercise(template, exerciseId) : null) || exerciseById(state.plan, exerciseId);
   const old = session.entries.find((e) => e.exerciseId === exerciseId);
   if (!old) return;
   const fallbackAt = session.finishedAt || Date.now();
   const newSets = sets.map((s, i) => {
     const orig = old.sets[i];
     const set = { setNo: i + 1, weight: s.weight, reps: s.reps, completedAt: orig ? orig.completedAt : fallbackAt, restTakenSeconds: orig ? orig.restTakenSeconds : null };
-    if (usedAlternate) set.usedAlternate = usedAlternate;
+    if (alternateId) set.exerciseId = alternateId;
     return set;
   });
   const status = newSets.length === 0 ? 'skipped' : base && newSets.length >= targetSets(base, old) ? 'done' : 'partial';
   const next = {
     ...session,
-    entries: session.entries.map((e) => (e.exerciseId === exerciseId ? { ...e, usedAlternate: usedAlternate || null, sets: newSets, status } : e)),
+    entries: session.entries.map((e) => (e.exerciseId === exerciseId ? { ...e, alternateId: alternateId || null, sets: newSets, status } : e)),
   };
   putHistorySession(next);
 }
@@ -1023,7 +1047,8 @@ function renderHistoryEditSheet(root, session) {
   const template = findTemplate(session.templateId);
   renderEntryEditSheet(root, {
     entry,
-    base: template ? findExercise(template, edit.exerciseId) : null,
+    base: (template ? findExercise(template, edit.exerciseId) : null) || exerciseById(state.plan, edit.exerciseId),
+    currentAlt: entry.alternateId ? exerciseById(state.plan, entry.alternateId) : null,
     onSave: (values) => saveEntryEdit(session, edit.exerciseId, values),
     onClose: close,
   });
@@ -1084,7 +1109,7 @@ function renderHistoryView(root, view) {
 
 // 每次改动：先改内存里的计划并重画（立刻生效），再写库；写失败显示在页面上
 function applyPlan(next) {
-  state.plan = next;
+  state.plan = expandPlan(next);
   state.planSheet = null;
   render();
   savePlan(next).then(
@@ -1289,11 +1314,13 @@ async function applyImport(mode) {
   if (!window.confirm(msg)) return;
   try {
     if (mode === 'replace') {
+      // 旧版备份（替代动作只存名字）按文件里的计划（没有就按现在的）换成动作库格式
+      const r = migrateData({ plan: plan || compactPlan(state.plan), sessions });
       await clearSessions();
-      await putSessions(sessions);
-      if (plan) {
-        await savePlan(plan);
-        state.plan = plan;
+      await putSessions(r.sessions);
+      if (plan || r.planChanged) {
+        await savePlan(r.plan);
+        state.plan = expandPlan(r.plan);
       }
       if (settings) {
         await saveSettings(settings);
@@ -1301,7 +1328,14 @@ async function applyImport(mode) {
         setDisplayUnit(settings.unit);
       }
     } else {
-      await putSessions(sessions);
+      // 合并：按现在的动作库换成新格式；记录用到、动作库里没有的动作（旧版的替代动作名、文件计划里的动作）加进动作库
+      const r = migrateData({ plan: compactPlan(state.plan), sessions });
+      const adopted = adoptReferencedExercises(r.plan, plan, r.sessions);
+      await putSessions(r.sessions);
+      if (r.planChanged || adopted.changed) {
+        await savePlan(adopted.plan);
+        state.plan = expandPlan(adopted.plan);
+      }
     }
     state.saveError = null;
   } catch (err) {
@@ -1320,7 +1354,7 @@ async function afterRecordsChanged() {
   state.historyError = null;
   try {
     const draft = await findDraft({ test: state.isTest });
-    state.session = draft ? hydrateSession(draft) : null;
+    state.session = draft ? hydrateSession(upgradeSession(draft)) : null;
   } catch (_) {
     /* 读不到草稿就当没有 */
   }
@@ -1370,11 +1404,11 @@ async function restoreNativeBackup(detail) {
   const parts = [`${sessions.length} 条记录`, plan ? '计划' : null, settings ? '设置' : null].filter(Boolean).join('、');
   if (!window.confirm(`恢复${when}：${parts}？现在库里的内容会被替换。`)) return;
   try {
+    const r = migrateData({ plan: plan || state.builtinPlan, sessions });
     await clearSessions();
-    await putSessions(sessions);
-    const nextPlan = plan || state.builtinPlan;
-    await savePlan(nextPlan);
-    state.plan = nextPlan;
+    await putSessions(r.sessions);
+    await savePlan(r.plan);
+    state.plan = expandPlan(r.plan);
     if (settings) {
       await saveSettings(settings);
       state.settings = settings;
@@ -1394,8 +1428,9 @@ async function restoreNativeBackup(detail) {
 async function reloadBuiltinPlan() {
   if (!window.confirm('用内置计划覆盖现在的计划？在计划编辑里改过的内容会丢，已保存的记录不受影响。')) return;
   try {
-    await savePlan(state.builtinPlan);
-    state.plan = state.builtinPlan;
+    const next = withKeptLibrary(state.builtinPlan, state.plan);
+    await savePlan(next);
+    state.plan = expandPlan(next);
     state.saveError = null;
   } catch (err) {
     state.saveError = `计划没能保存：${err.message}`;
@@ -1426,7 +1461,7 @@ async function clearAllData() {
   state.settings = normalizeSettings({});
   setDisplayUnit(state.settings.unit);
   state.backupMeta = normalizeBackupMeta(null);
-  state.plan = state.builtinPlan;
+  state.plan = expandPlan(state.builtinPlan);
   state.firstRun = true;
   location.hash = '';
   render();
@@ -1554,7 +1589,7 @@ async function choosePlan(plan) {
   } catch (err) {
     state.saveError = `计划没能保存：${err.message}`;
   }
-  state.plan = plan;
+  state.plan = expandPlan(plan);
   state.firstRun = false;
   render();
 }
@@ -1615,7 +1650,7 @@ function syncRestTimer() {
     if (at > Date.now()) {
       const base = s.lastSetExerciseId ? findExercise(t, s.lastSetExerciseId) : null;
       const entry = s.lastSetExerciseId ? findEntry(s, s.lastSetExerciseId) : null;
-      const ex = base && entry ? effectiveExercise(entry, base) : base;
+      const ex = base && entry ? effectiveExercise(entry, base, t) : base;
       payload = { at, title: '休息到了', body: `${ex ? `${ex.name} · ` : ''}参考 ${formatClock(ref * 1000)}`, sound: state.settings.sound };
       key = `${at}|${payload.sound}`;
     }
@@ -1658,7 +1693,7 @@ function nativeTrainingState() {
     if (active) {
       const aEntry = findEntry(s, s.activeExerciseId);
       st.activeId = s.activeExerciseId;
-      st.activeExercise = (aEntry ? effectiveExercise(aEntry, active) : active).name;
+      st.activeExercise = (aEntry ? effectiveExercise(aEntry, active, t) : active).name;
     }
     if (s.restStartedAt != null) st.restStartedAt = s.restStartedAt;
     st.restSeconds = restReferenceSeconds(s, t, state.settings.defaultRestSeconds);
@@ -1666,7 +1701,7 @@ function nativeTrainingState() {
     for (const entry of orderedEntries(s)) {
       const base = findExercise(t, entry.exerciseId);
       if (!base) continue;
-      const ex = effectiveExercise(entry, base);
+      const ex = effectiveExercise(entry, base, t);
       const pre = prefillFor(entry, ex, lastFor(entry));
       const load = ex.load || {};
       const row = {
@@ -1742,7 +1777,7 @@ function handleNativeCommand(name, detail) {
       native.haptic('warning'); // 没有进行中的动作，不知道记给谁
       return;
     }
-    const ex = effectiveExercise(entry, base);
+    const ex = effectiveExercise(entry, base, template);
     const pre = prefillFor(entry, ex, lastFor(entry));
     const needWeight = !(ex.load || {}).bodyweight;
     if ((needWeight && pre.weight == null) || pre.reps == null) {
@@ -1874,7 +1909,7 @@ async function main() {
   state.date = date;
   state.isTest = isTest;
   try {
-    state.builtinPlan = await loadPlan();
+    state.builtinPlan = ensureLibraryPlan(await loadPlan()); // 存储形状；万一拿到旧版内置计划也先换成动作库
   } catch (err) {
     root.replaceChildren(el('p', { class: 'problem', text: `读取内置训练计划失败：${err.message}` }));
     return;
@@ -1894,12 +1929,22 @@ async function main() {
     new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), DRAFT_LOAD_TIMEOUT_MS)),
   ]);
   if (storedFirst.plan) {
-    state.plan = storedFirst.plan;
+    let plan = storedFirst.plan;
+    try {
+      plan = await migrateStoredData(plan);
+    } catch (err) {
+      // 这次先在内存里用新格式；库里的旧记录下次打开按动作库再换（替代动作名照样认得）
+      if (!isLibraryPlan(plan)) {
+        plan = ensureLibraryPlan(plan);
+        state.saveError = `动作库迁移没做完：${err.message}，下次打开会再试`;
+      }
+    }
+    state.plan = expandPlan(plan);
   } else if (storedFirst.error || storedFirst.timedOut) {
-    state.plan = state.builtinPlan;
+    state.plan = expandPlan(state.builtinPlan);
     state.saveError = `读取计划失败：${storedFirst.error ? storedFirst.error.message : '数据库没有响应'}，暂时用内置计划`;
   } else {
-    state.plan = state.builtinPlan;
+    state.plan = expandPlan(state.builtinPlan);
     state.firstRun = true;
   }
   const metaLoad = getSetting(BACKUP_META_KEY).then(
@@ -1924,12 +1969,12 @@ async function main() {
     draftLoad,
     new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), DRAFT_LOAD_TIMEOUT_MS)),
   ]);
-  if (first.draft) state.session = hydrateSession(first.draft);
+  if (first.draft) state.session = hydrateSession(upgradeSession(first.draft));
   else if (first.error) state.saveError = `读取草稿失败：${first.error.message}`;
   else if (first.timedOut) {
     draftLoad.then((late) => {
       if (late.draft && !sessionHasSets(state.session)) {
-        state.session = hydrateSession(late.draft);
+        state.session = hydrateSession(upgradeSession(late.draft));
         render();
       } else if (late.error) {
         state.saveError = `读取草稿失败：${late.error.message}`;

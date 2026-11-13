@@ -9,8 +9,18 @@ function altsDisplayText(list) {
   return alternatesToText((list || []).map((a) => (a.load && a.load.value != null ? { ...a, load: { ...a.load, value: lbToDisplay(a.load.value) } } : a)));
 }
 
-function altsFromDisplayText(text) {
-  return parseAlternates(text).map((a) => (a.load && a.load.value != null ? { ...a, load: { ...a.load, value: displayToLb(a.load.value) } } : a));
+// 没改过的数（显示值和原来的一样）保留原来的 lb：kg 显示时来回换算有舍入，不然点一下保存别的动作的重量就变了
+function keepLb(displayValue, originalLb) {
+  if (displayValue == null) return displayValue;
+  return originalLb != null && lbToDisplay(originalLb) === displayValue ? originalLb : displayToLb(displayValue);
+}
+
+function altsFromDisplayText(text, originals = []) {
+  return parseAlternates(text).map((a) => {
+    if (!a.load || a.load.value == null) return a;
+    const orig = (originals || []).find((o) => o.name === a.name && o.load && o.load.value != null);
+    return { ...a, load: { ...a.load, value: keepLb(a.load.value, orig ? orig.load.value : null) } };
+  });
 }
 
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -276,15 +286,15 @@ export function renderExerciseSheet(root, { title, exercise, defaultRestSeconds 
       name,
       muscle: q('ex-muscle').value.trim(),
       ...nums,
-      weight: displayToLb(nums.weight),
-      step: stepVal ? displayToLb(stepVal) : null,
+      weight: keepLb(nums.weight, load.bodyweight ? null : load.value),
+      step: stepVal ? keepLb(stepVal, load.step || null) : null,
       label: q('ex-label').value.trim(),
       bodyweight: q('ex-bodyweight').checked,
       assisted: q('ex-assisted').checked,
       perSideLoad: q('ex-perSideLoad').checked,
       perSide: q('ex-perSide').checked,
       distance: q('ex-distance').checked,
-      alternates: altsFromDisplayText(q('ex-alts').value),
+      alternates: altsFromDisplayText(q('ex-alts').value, ex.alternates),
       notes: q('ex-notes').value.trim(),
     });
     return undefined;

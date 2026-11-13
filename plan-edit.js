@@ -1,5 +1,7 @@
 // plan-edit.js — 修改训练计划的纯函数（spec 3.5）。都返回新对象，不改原计划；调用方负责 savePlan。
 // 任何编辑都不碰已保存的训练记录（记录里存的是 exerciseId 和当时的数值）。
+// 动作的增删改走动作库（exercise-library.js）：改训练日里的一个动作 = 改动作库里那一条，所有训练日一起变。
+import { updateLibraryExercise, addLibraryExercise, removeSlot, moveSlot } from './exercise-library.js';
 
 const WEEK_LABELS = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 0: '周日' };
 
@@ -76,35 +78,24 @@ export function setTemplateEnabled(plan, templateId, enabled) {
   return { ...plan, dayTemplates: plan.dayTemplates.map((t) => (t.id === templateId ? { ...t, enabled } : t)) };
 }
 
-function mapTemplate(plan, templateId, fn) {
-  return { ...plan, dayTemplates: plan.dayTemplates.map((t) => (t.id === templateId ? fn(t) : t)) };
-}
-
 // 整个替换（id 不变）：表单里取消勾选的字段（perSide / countUnit / notes）要真的消失，合并会把旧值留下来
 export function updateExercise(plan, templateId, exerciseId, exercise) {
-  return mapTemplate(plan, templateId, (t) => ({
-    ...t,
-    exercises: t.exercises.map((e) => (e.id === exerciseId ? { ...exercise, id: e.id } : e)),
-  }));
+  return updateLibraryExercise(plan, templateId, exerciseId, exercise);
 }
 
 export function moveExercise(plan, templateId, exerciseId, dir) {
-  return mapTemplate(plan, templateId, (t) => {
-    const list = [...t.exercises];
-    const i = list.findIndex((e) => e.id === exerciseId);
-    const j = i + dir;
-    if (i < 0 || j < 0 || j >= list.length) return t;
-    [list[i], list[j]] = [list[j], list[i]];
-    return { ...t, exercises: list };
-  });
+  return moveSlot(plan, templateId, exerciseId, dir);
 }
 
+// 动作库里已有同名动作就用那一条（不同天练同一个动作，记录共用）
 export function addExercise(plan, templateId, exercise) {
-  return mapTemplate(plan, templateId, (t) => ({ ...t, exercises: [...t.exercises, exercise] }));
+  const { id, ...form } = exercise;
+  return addLibraryExercise(plan, templateId, id, form);
 }
 
+// 只从这个训练日拿掉，动作库里的那一条留着
 export function removeExercise(plan, templateId, exerciseId) {
-  return mapTemplate(plan, templateId, (t) => ({ ...t, exercises: t.exercises.filter((e) => e.id !== exerciseId) }));
+  return removeSlot(plan, templateId, exerciseId);
 }
 
 // 新动作的 id：英文 slug 不好自动起，用时间戳保证唯一；记录里只存 id，所以名字可以随便改

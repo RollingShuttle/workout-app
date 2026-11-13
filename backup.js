@@ -3,6 +3,7 @@
 // 导出的文件可读可手改（spec 4），导入时尽量宽容：只认得出来的部分才用，坏了就报错不动数据。
 import { toDateKey } from './schedule.js';
 import { normalizeSettings } from './settings.js';
+import { compactPlan } from './exercise-library.js';
 
 export const BACKUP_APP = 'workout-tracker';
 export const BACKUP_FORMAT = 1;
@@ -12,7 +13,7 @@ export function buildBackup({ plan, settings, sessions, now }) {
     app: BACKUP_APP,
     format: BACKUP_FORMAT,
     exportedAt: new Date(now).toISOString(),
-    plan,
+    plan: compactPlan(plan), // 存储形状：动作库 + 训练日只存动作 id
     settings,
     sessions,
   };

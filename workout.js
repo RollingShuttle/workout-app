@@ -19,8 +19,8 @@ export function createSession(template, dateKey, now) {
 
 function newEntry(ex) {
   return {
-    exerciseId: ex.id,
-    usedAlternate: null, // 选用替代动作时记替代动作名（spec 2.3）
+    exerciseId: ex.id, // 计划里的那个动作
+    alternateId: null, // 换成了替代动作时记它的动作 id（动作库，docs/exercise-library-plan.md）；null = 原动作
     sets: [],
     status: 'pending', // pending | active | done | skipped
     extraSets: 0, // "再加一组"累计
@@ -73,18 +73,22 @@ export function isDone(entry, exercise) {
   return Boolean(entry.endedEarly) || completedSets(entry, exercise) >= targetSets(exercise, entry);
 }
 
-// 选了替代动作时，显示名和重量按替代动作来；没选就是原动作
-export function effectiveExercise(entry, exercise) {
-  if (!entry.usedAlternate) return exercise;
-  const alt = (exercise.alternates || []).find((a) => a.name === entry.usedAlternate);
-  if (!alt) return { ...exercise, name: entry.usedAlternate };
+// 选了替代动作时，显示名和重量按替代动作来；没选就是原动作。
+// 替代动作先在原动作的 alternates 里找，再在动作库里找（template.library，替代关系后来删了的旧草稿也认得）。
+// 组数 / 次数 / 休息这一步仍按原动作（动作库第 2 步改成替代动作自己的）
+export function effectiveExercise(entry, exercise, template = null) {
+  if (!entry.alternateId) return exercise;
+  const alt =
+    (exercise.alternates || []).find((a) => a.id === entry.alternateId) ||
+    (template && template.library ? template.library[entry.alternateId] : null);
+  if (!alt) return { ...exercise, name: entry.alternateId };
   // 替代动作没写 load = 重量未知（spec 2.2 的 null 语义），不沿用原动作的重量
   const load = alt.load || { value: null, unit: (exercise.load || {}).unit || 'lb' };
   return { ...exercise, name: alt.name, load };
 }
 
-function plannedWeight(entry, exercise) {
-  const load = effectiveExercise(entry, exercise).load || {};
+function plannedWeight(entry, exercise, template) {
+  const load = effectiveExercise(entry, exercise, template).load || {};
   return load.value ?? null;
 }
 
@@ -101,7 +105,7 @@ export function canEndExercise(entry, exercise) {
 export function sessionHasInput(session) {
   return Boolean(
     session &&
-      session.entries.some((e) => e.sets.length > 0 || e.usedAlternate || e.status === 'skipped' || e.endedEarly)
+      session.entries.some((e) => e.sets.length > 0 || e.alternateId || e.status === 'skipped' || e.endedEarly)
   );
 }
 
@@ -153,10 +157,10 @@ export function completeSet(session, template, id, now, input = {}) {
     session.lastSetCompletedAt == null || now < session.lastSetCompletedAt
       ? null
       : Math.round((now - session.lastSetCompletedAt) / 1000);
-  const weight = input.weight === undefined ? plannedWeight(entry, exercise) : input.weight;
+  const weight = input.weight === undefined ? plannedWeight(entry, exercise, template) : input.weight;
   const reps = input.reps === undefined ? null : input.reps;
   const set = { setNo, weight, reps, completedAt: now, restTakenSeconds };
-  if (entry.usedAlternate) set.usedAlternate = entry.usedAlternate; // 每组记下当时用的替代动作，中途切换也能分清
+  if (entry.alternateId) set.exerciseId = entry.alternateId; // 每组记下实际做的动作，中途切换也能分清；记录按它查
 
   const updated = { ...entry, sets: [...entry.sets, set] };
   const done = isDone(updated, exercise);
@@ -287,15 +291,16 @@ export function unskipExercise(session, template, id) {
   };
 }
 
-// 换替代动作：name 为 null 表示换回原动作。只改这条记录的 usedAlternate，已记的组不动
-export function setAlternate(session, template, id, name) {
+// 换替代动作：altId 为 null 表示换回原动作。只改这条记录的 alternateId，已记的组不动
+export function setAlternate(session, template, id, altId) {
   const entry = findEntry(session, id);
   const exercise = findExercise(template, id);
   if (!entry || !exercise) return session;
-  if (name != null && !(exercise.alternates || []).some((a) => a.name === name)) return session;
+  if (altId != null && !(exercise.alternates || []).some((a) => a.id === altId)) return session;
+  if ((entry.alternateId || null) === (altId || null)) return session;
   return {
     ...session,
-    entries: session.entries.map((e) => (e.exerciseId === id ? { ...e, usedAlternate: name } : e)),
+    entries: session.entries.map((e) => (e.exerciseId === id ? { ...e, alternateId: altId || null } : e)),
   };
 }
 
