@@ -13,7 +13,7 @@ Swift + WKWebView，把仓库根目录的网页原样打进 App。原生只做�
 
 ## 以后更新
 
-Finder → 文稿（Documents）→ workout-app → 双击 `update-mac.command`，弹出的窗口显示"拉取完成"后回 Xcode ⌘R。不用 Xcode 的 Integrate → Pull（那个对话框会一直 Loading）。
+Finder → 文稿（Documents）→ workout-app → 双击 `update-mac.command`，弹出的窗口显示"拉取完成"后回 Xcode ⌘R。不用 Xcode 的 Integrate → Pull（那个对话框会一直 Loading）。本机有和 GitHub 上同名的多余文件（比如 Xcode 自己生成的 scheme）时，脚本先把本机那份挪到 文稿 → workout-app-本机旧文件 → 时间 里再拉，不删。
 
 ## 看网页控制台
 
