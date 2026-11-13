@@ -73,23 +73,39 @@ export function isDone(entry, exercise) {
   return Boolean(entry.endedEarly) || completedSets(entry, exercise) >= targetSets(exercise, entry);
 }
 
-// 选了替代动作时，显示名和重量按替代动作来；没选就是原动作。
-// 替代动作先在原动作的 alternates 里找，再在动作库里找（template.library，替代关系后来删了的旧草稿也认得）。
-// 组数 / 次数 / 休息这一步仍按原动作（动作库第 2 步改成替代动作自己的）
+// 这组换了动作时，用换上来的那个动作自己的设置：名字、重量、组数、次数、休息、每侧、按米、备注（用户 2026-11-13）。
+// id 仍是这组的默认动作（训练页、输入框、命令都按它当 key），actualId 是实际在做的动作。
+// 换上来的动作先在这组的其他动作（exercise.alternates）里找，再在动作库里找（template.library：组里后来删掉了的旧草稿也认得）
 export function effectiveExercise(entry, exercise, template = null) {
   if (!entry.alternateId) return exercise;
   const alt =
     (exercise.alternates || []).find((a) => a.id === entry.alternateId) ||
     (template && template.library ? template.library[entry.alternateId] : null);
   if (!alt) return { ...exercise, name: entry.alternateId };
-  // 替代动作没写 load = 重量未知（spec 2.2 的 null 语义），不沿用原动作的重量
+  // 没写 load = 重量未知（spec 2.2 的 null 语义），不沿用默认动作的重量
   const load = alt.load || { value: null, unit: (exercise.load || {}).unit || 'lb' };
-  return { ...exercise, name: alt.name, load };
+  return { ...alt, load, id: exercise.id, actualId: alt.id, alternates: exercise.alternates, slotMuscle: exercise.slotMuscle };
 }
 
-function plannedWeight(entry, exercise, template) {
-  const load = effectiveExercise(entry, exercise, template).load || {};
-  return load.value ?? null;
+// 这条记录现在按哪个动作的设置算（换了动作就是换上来的那个）；动作不在计划里了返回 null
+export function exerciseForEntry(template, entry) {
+  const base = entry ? findExercise(template, entry.exerciseId) : null;
+  return base ? effectiveExercise(entry, base, template) : null;
+}
+
+// 上一组实际做的动作（秒表的参考休息和名字按它）：那一组记着 exerciseId 就用它，否则是那一行的动作
+export function lastSetExercise(session, template) {
+  const entry = session.lastSetExerciseId ? findEntry(session, session.lastSetExerciseId) : null;
+  if (!entry) return null;
+  const last = entry.sets[entry.sets.length - 1];
+  const id = last && last.exerciseId;
+  if (id && id !== entry.exerciseId && template && template.library && template.library[id]) return template.library[id];
+  if (last && !last.exerciseId) return findExercise(template, entry.exerciseId);
+  return exerciseForEntry(template, entry);
+}
+
+function plannedWeight(exercise) {
+  return (exercise.load || {}).value ?? null;
 }
 
 // 结束动作：做满 min 组、还没到 max 时允许（spec 2.2）；超过计划组数的"再加一组"用"取消再加一组"退出
@@ -148,7 +164,7 @@ export function selectExercise(session, template, id) {
 // 完成一组：记一条 set（重量、次数来自输入框；没传就用计划重量 / null）；达到目标组数 → 完成、清空进行中
 export function completeSet(session, template, id, now, input = {}) {
   const entry = findEntry(session, id);
-  const exercise = findExercise(template, id);
+  const exercise = exerciseForEntry(template, entry);
   if (!entry || !exercise || entry.status === 'done' || entry.status === 'skipped') return session;
 
   const setNo = entry.sets.length + 1;
@@ -157,7 +173,7 @@ export function completeSet(session, template, id, now, input = {}) {
     session.lastSetCompletedAt == null || now < session.lastSetCompletedAt
       ? null
       : Math.round((now - session.lastSetCompletedAt) / 1000);
-  const weight = input.weight === undefined ? plannedWeight(entry, exercise, template) : input.weight;
+  const weight = input.weight === undefined ? plannedWeight(exercise) : input.weight;
   const reps = input.reps === undefined ? null : input.reps;
   const set = { setNo, weight, reps, completedAt: now, restTakenSeconds };
   if (entry.alternateId) set.exerciseId = entry.alternateId; // 每组记下实际做的动作，中途切换也能分清；记录按它查
@@ -186,7 +202,7 @@ export function canCancelExtraSet(entry, exercise) {
 // 撤销最后一组：从完成态拉回进行中；刚加的那组还没做时改为取消加组；没有组可撤时无反应
 export function undoLastSet(session, template, id) {
   const entry = findEntry(session, id);
-  const exercise = findExercise(template, id);
+  const exercise = exerciseForEntry(template, entry);
   if (!entry || !exercise) return session;
   if (canCancelExtraSet(entry, exercise)) {
     return {
@@ -216,15 +232,37 @@ export function undoLastSet(session, template, id) {
 // 旧版（v0.4）草稿只有 lastSetCompletedAt：补上秒表字段，重开后秒表才能接着算
 // 计划在训练中途被改过时，让草稿的 entries 跟上模板：新动作补一条 pending，被删且一组都没记的去掉。
 // 已有记录的被删动作保留（历史要完整），没有变化就返回原对象。
+// 训练日里某组的默认动作改了（设为默认 / 拿掉默认动作）：草稿里按旧默认动作当 key 的那条换到它现在所在的组——
+// key 换成新的默认动作，alternateId 是实际在做的动作，已记的组标上当时做的动作，进行中 / 上一组的 key 跟着换。
 export function syncEntries(session, template) {
-  const ids = new Set((template.exercises || []).map((ex) => ex.id));
-  const kept = session.entries.filter((e) => ids.has(e.exerciseId) || e.sets.length > 0);
+  const exercises = template.exercises || [];
+  const ids = new Set(exercises.map((ex) => ex.id));
+  const taken = new Set(session.entries.map((e) => e.exerciseId).filter((id) => ids.has(id)));
+  const remap = {};
+  const inGroup = (ex, id) => ex.id === id || (ex.alternates || []).some((a) => a.id === id);
+  const rekeyed = session.entries.map((e) => {
+    if (ids.has(e.exerciseId)) return e;
+    const actual = e.alternateId || e.exerciseId;
+    const group = exercises.find((ex) => !taken.has(ex.id) && (inGroup(ex, actual) || inGroup(ex, e.exerciseId)));
+    if (!group) return e;
+    taken.add(group.id);
+    remap[e.exerciseId] = group.id;
+    return {
+      ...e,
+      exerciseId: group.id,
+      alternateId: actual === group.id ? null : actual,
+      sets: e.sets.map((set) => (set.exerciseId ? set : { ...set, exerciseId: e.exerciseId })),
+    };
+  });
+  const kept = rekeyed.filter((e) => ids.has(e.exerciseId) || e.sets.length > 0);
   const have = new Set(kept.map((e) => e.exerciseId));
-  const added = (template.exercises || [])
-    .filter((ex) => !have.has(ex.id))
-    .map(newEntry);
-  if (kept.length === session.entries.length && added.length === 0) return session;
-  return { ...session, entries: [...kept, ...added] };
+  const added = exercises.filter((ex) => !have.has(ex.id)).map(newEntry);
+  const changed = Object.keys(remap).length > 0;
+  if (!changed && kept.length === session.entries.length && added.length === 0) return session;
+  const next = { ...session, entries: [...kept, ...added] };
+  if (remap[session.activeExerciseId]) next.activeExerciseId = remap[session.activeExerciseId];
+  if (remap[session.lastSetExerciseId]) next.lastSetExerciseId = remap[session.lastSetExerciseId];
+  return next;
 }
 
 export function hydrateSession(session) {
@@ -244,9 +282,9 @@ export function resetRest(session, now) {
   return { ...session, restStartedAt: now };
 }
 
-// 组间秒表的参考休息秒数：按上一组的动作取 restSeconds，没有就用默认值
+// 组间秒表的参考休息秒数：按上一组的动作（换了动作就是换上来的那个）取 restSeconds，没有就用默认值
 export function restReferenceSeconds(session, template, fallback = 90) {
-  const exercise = session.lastSetExerciseId ? findExercise(template, session.lastSetExerciseId) : null;
+  const exercise = lastSetExercise(session, template);
   return exercise && typeof exercise.restSeconds === 'number' ? exercise.restSeconds : fallback;
 }
 
@@ -262,7 +300,7 @@ export function addExtraSet(session, template, id) {
 // 结束动作：做满 min 组后手动完成，变灰下沉
 export function endExercise(session, template, id) {
   const entry = findEntry(session, id);
-  const exercise = findExercise(template, id);
+  const exercise = exerciseForEntry(template, entry);
   if (!entry || !exercise || !canEndExercise(entry, exercise)) return session;
   return {
     ...session,
@@ -291,16 +329,20 @@ export function unskipExercise(session, template, id) {
   };
 }
 
-// 换替代动作：altId 为 null 表示换回原动作。只改这条记录的 alternateId，已记的组不动
+// 换动作：altId 为这组里的另一个动作，null 表示换回默认动作。只改这条记录的 alternateId，已记的组不动
 export function setAlternate(session, template, id, altId) {
   const entry = findEntry(session, id);
   const exercise = findExercise(template, id);
   if (!entry || !exercise) return session;
   if (altId != null && !(exercise.alternates || []).some((a) => a.id === altId)) return session;
   if ((entry.alternateId || null) === (altId || null)) return session;
+  // "再加一组"是给原来那个动作加的，换了动作就作废；按新动作的组数已经做够了就直接完成
+  const switched = { ...entry, alternateId: altId || null, extraSets: 0, endedEarly: false };
+  const done = entry.status === 'active' && isDone(switched, effectiveExercise(switched, exercise, template));
   return {
     ...session,
-    entries: session.entries.map((e) => (e.exerciseId === id ? { ...e, alternateId: altId || null } : e)),
+    activeExerciseId: done && session.activeExerciseId === id ? null : session.activeExerciseId,
+    entries: session.entries.map((e) => (e.exerciseId === id ? { ...switched, status: done ? 'done' : switched.status } : e)),
   };
 }
 
@@ -314,7 +356,7 @@ export function summarize(session, template) {
   let totalSets = 0;
   let doneExercises = 0;
   for (const e of session.entries) {
-    const ex = findExercise(template, e.exerciseId);
+    const ex = exerciseForEntry(template, e);
     if (!ex) continue;
     totalSets += completedSets(e, ex);
     if (e.status === 'done') doneExercises += 1;
@@ -332,7 +374,7 @@ export function finishSession(session, template, now) {
     restStartedAt: null,
     pendingInput: null, // 输入框里还没提交的值，结束后不留
     entries: session.entries.map((e) => {
-      const exercise = template ? findExercise(template, e.exerciseId) : null;
+      const exercise = template ? exerciseForEntry(template, e) : null;
       let done;
       if (exercise) {
         const sets = exercise.sets || {};

@@ -1,7 +1,6 @@
 // plan-edit.js — 修改训练计划的纯函数（spec 3.5）。都返回新对象，不改原计划；调用方负责 savePlan。
 // 任何编辑都不碰已保存的训练记录（记录里存的是 exerciseId 和当时的数值）。
-// 动作的增删改走动作库（exercise-library.js）：改训练日里的一个动作 = 改动作库里那一条，所有训练日一起变。
-import { updateLibraryExercise, addLibraryExercise, removeSlot, moveSlot } from './exercise-library.js';
+// 动作和训练日里的肌群组在 exercise-library.js 里改（动作库第 2 版）。
 
 const WEEK_LABELS = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 0: '周日' };
 
@@ -78,26 +77,6 @@ export function setTemplateEnabled(plan, templateId, enabled) {
   return { ...plan, dayTemplates: plan.dayTemplates.map((t) => (t.id === templateId ? { ...t, enabled } : t)) };
 }
 
-// 整个替换（id 不变）：表单里取消勾选的字段（perSide / countUnit / notes）要真的消失，合并会把旧值留下来
-export function updateExercise(plan, templateId, exerciseId, exercise) {
-  return updateLibraryExercise(plan, templateId, exerciseId, exercise);
-}
-
-export function moveExercise(plan, templateId, exerciseId, dir) {
-  return moveSlot(plan, templateId, exerciseId, dir);
-}
-
-// 动作库里已有同名动作就用那一条（不同天练同一个动作，记录共用）
-export function addExercise(plan, templateId, exercise) {
-  const { id, ...form } = exercise;
-  return addLibraryExercise(plan, templateId, id, form);
-}
-
-// 只从这个训练日拿掉，动作库里的那一条留着
-export function removeExercise(plan, templateId, exerciseId) {
-  return removeSlot(plan, templateId, exerciseId);
-}
-
 // 新动作的 id：英文 slug 不好自动起，用时间戳保证唯一；记录里只存 id，所以名字可以随便改
 export function newExerciseId(now) {
   return `ex-${now.toString(36)}`;
@@ -124,8 +103,10 @@ export function exerciseFromForm(form, existing = {}) {
     sets: { min: form.setsMin, max: form.setsMax },
     reps: { min: form.repsMin, max: form.repsMax },
     restSeconds: form.restSeconds,
-    alternates: form.alternates || [],
   };
+  delete ex.alternates; // 第 2 版动作上没有替代关系（existing 是运行时对象，带着组里的其他动作）
+  delete ex.slotMuscle;
+  delete ex.actualId;
   if (form.perSide) ex.perSide = true;
   else delete ex.perSide;
   if (form.distance) ex.countUnit = 'm'; // 按距离计（弓步走）：reps 字段存米数
@@ -133,20 +114,4 @@ export function exerciseFromForm(form, existing = {}) {
   if (form.notes) ex.notes = form.notes;
   else delete ex.notes;
   return ex;
-}
-
-// "斜下胸推机器:45, 哑铃推" → [{name, load?}]
-export function parseAlternates(text) {
-  return (text || '')
-    .split(/[,，;；\n]/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s) => {
-      const m = /^(.*?)[:：]\s*(\d+(?:\.\d+)?)$/.exec(s);
-      return m ? { name: m[1].trim(), load: { value: Number(m[2]), unit: 'lb' } } : { name: s };
-    });
-}
-
-export function alternatesToText(list) {
-  return (list || []).map((a) => (a.load && a.load.value != null ? `${a.name}:${a.load.value}` : a.name)).join('，');
 }

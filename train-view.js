@@ -1,7 +1,7 @@
 // train-view.js — 训练模式页面。只画 DOM；状态改动通过回调交给 app.js。
 import { el, replaceChildren } from './dom.js';
 import { lbToDisplay, displayToLb, displayUnit, weightStep } from './units.js';
-import { formatLoad, formatRange } from './schedule.js';
+import { formatLoad, formatRange, formatSetsReps } from './schedule.js';
 import { formatSets } from './history.js';
 import {
   findExercise,
@@ -14,6 +14,7 @@ import {
   canEndExercise,
   effectiveExercise,
   restReferenceSeconds,
+  lastSetExercise,
 } from './workout.js';
 
 function fmtDateKey(key) {
@@ -87,10 +88,10 @@ function renderSetInputs(entry, base, ex, ctx, handlers) {
     fields.push(numberField({ id: `inp-${base.id}-weight`, label: weightLabel, value: weightVal, delta, min: 0, inputmode: 'decimal', onChange: onChange('weight') }));
   }
   // 按距离计的动作（弓步走）：次数框记米数，± 一次 5 米
-  const byDistance = base.countUnit === 'm';
+  const byDistance = ex.countUnit === 'm';
   fields.push(numberField({ id: `inp-${base.id}-reps`, label: byDistance ? '距离（米）' : '次数', value: repsVal, delta: byDistance ? 5 : 1, min: 1, inputmode: 'numeric', onChange: onChange('reps') }));
   return el('div', { class: 'set-entry' }, [
-    el('p', { class: 'last-ref', text: lastRefText(last, bodyweight, ctx.historyLoaded, base.countUnit) }),
+    el('p', { class: 'last-ref', text: lastRefText(last, bodyweight, ctx.historyLoaded, ex.countUnit) }),
     el('div', { class: `set-inputs${bodyweight ? ' set-inputs-single' : ''}` }, fields),
     errEl,
   ]);
@@ -109,7 +110,7 @@ export function updateLastRef(root, session, template, lastFor) {
     const line = rowEl.querySelector('.last-ref');
     if (!entry || !base || !line) return;
     const ex = effectiveExercise(entry, base, template);
-    line.textContent = lastRefText(lastFor(entry), Boolean((ex.load || {}).bodyweight), true, base.countUnit);
+    line.textContent = lastRefText(lastFor(entry), Boolean((ex.load || {}).bodyweight), true, ex.countUnit);
   });
 }
 
@@ -122,7 +123,7 @@ function readSetInputs(rowEl, base, ex) {
   const weight = bodyweight ? null : toNumber(weightEl && weightEl.value);
   const reps = toNumber(repsEl && repsEl.value);
   if (!bodyweight && (weight == null || weight < 0)) return { error: '先填这一组的重量' };
-  if (reps == null || reps < 1 || !Number.isInteger(reps)) return { error: base.countUnit === 'm' ? '先填这一组的距离（整数米）' : '先填这一组的次数（整数）' };
+  if (reps == null || reps < 1 || !Number.isInteger(reps)) return { error: ex.countUnit === 'm' ? '先填这一组的距离（整数米）' : '先填这一组的次数（整数）' };
   return { weight: displayToLb(weight), reps }; // 存 lb
 }
 
@@ -131,17 +132,18 @@ function renderRow(entry, template, handlers, ctx) {
   if (!base) {
     return el('li', { class: 'train-row' }, el('p', { class: 'problem', text: `找不到动作 ${entry.exerciseId}` }));
   }
-  const ex = effectiveExercise(entry, base, template); // 选了替代动作就显示替代动作的名字和重量
+  // 换了动作就按换上来的那个动作：名字、重量、组数、次数、每侧、按米都是它自己的；base.id 仍是这一行的 key
+  const ex = effectiveExercise(entry, base, template);
   const done = entry.status === 'done';
   const skipped = entry.status === 'skipped';
   const active = entry.status === 'active';
-  const count = skipped ? '已跳过' : `${completedSets(entry, base)}/${targetSets(base, entry)}`;
+  const count = skipped ? '已跳过' : `${completedSets(entry, ex)}/${targetSets(ex, entry)}`;
   // 每侧动作：两侧都做完再按一次"完成一组"，所以这里只提示"每侧"，不分左右
-  const metaParts = [formatLoad(ex.load), `${formatRange(base.reps)} ${base.countUnit === 'm' ? '米' : '次'}`, base.perSide ? '每侧' : null];
-  if (entry.alternateId) metaParts.unshift(`替代 ${base.name}`);
+  const metaParts = [formatLoad(ex.load), `${formatRange(ex.reps)} ${ex.countUnit === 'm' ? '米' : '次'}`, ex.perSide ? '每侧' : null];
+  if (entry.alternateId) metaParts.unshift(`换自 ${base.name}`);
   const meta = metaParts.filter(Boolean).join(' · ');
-  const undoLabel = canCancelExtraSet(entry, base) ? '取消再加一组' : '撤销最后一组';
-  const sets = base.sets || {};
+  const undoLabel = canCancelExtraSet(entry, ex) ? '取消再加一组' : '撤销最后一组';
+  const sets = ex.sets || {};
   const showEnd = (sets.min ?? 0) < (sets.max ?? 0); // min === max 的动作做满自动完成，不需要"结束动作"
   const btn = (label, handler, attrs = {}) =>
     el('button', { class: 'btn-secondary', type: 'button', onclick: handler, ...attrs }, label);
@@ -164,12 +166,12 @@ function renderRow(entry, template, handlers, ctx) {
 
   const children = [head];
   // 进阶 / 退阶提示：只提示，不改计划；完成或跳过的行不显示
-  const suggestion = !done && !skipped && ctx.suggest ? ctx.suggest(entry, base) : null;
+  const suggestion = !done && !skipped && ctx.suggest ? ctx.suggest(entry, ex) : null;
   if (suggestion) {
     children.push(el('div', { class: `train-hint train-hint-${suggestion.kind}`, text: `${suggestion.kind === 'up' ? '↑' : '↓'} ${suggestion.text}` }));
   }
   if (entry.sets.length > 0 && !active) {
-    children.push(el('div', { class: 'train-row-sets', text: formatSets(entry.sets, { bodyweight: Boolean((ex.load || {}).bodyweight), countUnit: base.countUnit }) }));
+    children.push(el('div', { class: 'train-row-sets', text: formatSets(entry.sets, { bodyweight: Boolean((ex.load || {}).bodyweight), countUnit: ex.countUnit }) }));
   }
   if (active) {
     const complete = () => {
@@ -189,10 +191,10 @@ function renderRow(entry, template, handlers, ctx) {
         renderSetInputs(entry, base, ex, ctx, handlers),
         el('button', { class: 'btn-primary', type: 'button', onclick: complete }, '完成一组'),
         el('div', { class: 'train-secondary' }, [
-          entry.sets.length > 0 || canCancelExtraSet(entry, base) ? btn(undoLabel, () => handlers.onUndo(base.id)) : null,
-          showEnd ? btn('结束动作', () => handlers.onEnd(base.id), { disabled: !canEndExercise(entry, base) }) : null,
+          entry.sets.length > 0 || canCancelExtraSet(entry, ex) ? btn(undoLabel, () => handlers.onUndo(base.id)) : null,
+          showEnd ? btn('结束动作', () => handlers.onEnd(base.id), { disabled: !canEndExercise(entry, ex) }) : null,
           btn('跳过', () => handlers.onSkip(base.id)),
-          (base.alternates || []).length > 0 ? btn('换替代动作', () => handlers.onPickAlternate(base.id)) : null,
+          (base.alternates || []).length > 0 || entry.alternateId ? btn('换动作', () => handlers.onPickAlternate(base.id)) : null,
         ]),
       ])
     );
@@ -209,8 +211,9 @@ function renderRow(entry, template, handlers, ctx) {
   return el('li', { class: `train-row train-row-${entry.status}`, 'data-exercise': base.id }, children);
 }
 
-// 换替代动作的底部选单：原动作 + 各替代动作（带重量）+ 取消
+// 换动作的底部选单：这一组（肌群）里的默认动作 + 其他动作，各带组数次数和重量 + 取消。exercise = 这组的默认动作
 export function renderAlternateSheet(root, { entry, exercise, onPick, onClose }) {
+  const loadText = (x) => (x.load && (x.load.value != null || x.load.bodyweight) ? formatLoad(x.load) : '重量首次做时填');
   const item = (label, sub, handler, selected) =>
     el('button', { class: `sheet-item${selected ? ' sheet-item-selected' : ''}`, type: 'button', onclick: handler }, [
       el('span', { class: 'sheet-item-name', text: label }),
@@ -232,12 +235,10 @@ export function renderAlternateSheet(root, { entry, exercise, onPick, onClose })
     document.removeEventListener('keydown', onKey);
     onPick(altId);
   };
-  const sheet = el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': '换替代动作', tabindex: '-1' }, [
-        el('div', { class: 'sheet-title', text: `${exercise.name} · 换替代动作` }),
-        item(`原动作：${exercise.name}`, formatLoad(exercise.load), () => pick(null), !entry.alternateId),
-        ...(exercise.alternates || []).map((a) =>
-          item(a.name, a.load && (a.load.value != null || a.load.bodyweight) ? formatLoad(a.load) : '重量未填', () => pick(a.id), entry.alternateId === a.id)
-        ),
+  const sheet = el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': '换动作', tabindex: '-1' }, [
+        el('div', { class: 'sheet-title', text: `${exercise.slotMuscle || exercise.name} · 换动作` }),
+        item(exercise.name, `默认 · ${formatSetsReps(exercise)} · ${loadText(exercise)}`, () => pick(null), !entry.alternateId),
+        ...(exercise.alternates || []).map((a) => item(a.name, `${formatSetsReps(a)} · ${loadText(a)}`, () => pick(a.id), entry.alternateId === a.id)),
         el('button', { class: 'btn-secondary sheet-cancel', type: 'button', onclick: close }, '取消'),
       ]);
   root.appendChild(
@@ -265,9 +266,7 @@ export function restClockState(session, template, now, defaultRest = 90) {
   }
   const elapsedMs = now - session.restStartedAt;
   const reference = restReferenceSeconds(session, template, defaultRest);
-  const base = session.lastSetExerciseId ? findExercise(template, session.lastSetExerciseId) : null;
-  const entry = session.lastSetExerciseId ? findEntry(session, session.lastSetExerciseId) : null;
-  const exercise = base && entry ? effectiveExercise(entry, base, template) : base; // 换了替代动作就显示替代动作名
+  const exercise = lastSetExercise(session, template); // 上一组实际做的动作
   // 已经点到别的动作上了：这段是动作之间的休息，标题不再写上一个动作的名字（2026-10-26 用户要求）
   const between = Boolean(session.activeExerciseId && session.lastSetExerciseId && session.activeExerciseId !== session.lastSetExerciseId);
   return {

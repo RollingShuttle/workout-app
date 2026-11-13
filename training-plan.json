@@ -13,7 +13,7 @@
       "incrementLb": { "upper": 5, "lowerMachine": 10, "assistedPullUp": -5 }
     }
   },
-  "libraryVersion": 1,
+  "libraryVersion": 2,
   "exercises": [
     {
       "id": "incline-bench",
@@ -22,8 +22,7 @@
       "load": { "value": 105, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 6, "max": 10 },
-      "restSeconds": 150,
-      "alternates": ["x-3oaui", "x-1uabu7k", "incline-machine-press"]
+      "restSeconds": 150
     },
     {
       "id": "assisted-dip",
@@ -33,7 +32,6 @@
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 6, "max": 10 },
       "restSeconds": 150,
-      "alternates": ["x-436g02", "x-1u3i5if", "x-pb2rix"],
       "notes": "身体前倾、肘微开练下胸；机器一格 8.5 lb（10 / 18.5 / 27 / 35.5 / 44 / 52.5 / 61 / 69.5 / 78 …），助力越小越难"
     },
     {
@@ -43,8 +41,7 @@
       "load": { "value": 30, "unit": "lb", "step": 2.5 },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 6, "max": 10 },
-      "restSeconds": 120,
-      "alternates": []
+      "restSeconds": 120
     },
     {
       "id": "lateral-raise",
@@ -53,8 +50,7 @@
       "load": { "value": 15, "unit": "lb", "step": 2.5 },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 12, "max": 20 },
-      "restSeconds": 60,
-      "alternates": []
+      "restSeconds": 60
     },
     {
       "id": "db-overhead-tri",
@@ -63,8 +59,7 @@
       "load": { "value": 25, "unit": "lb", "step": 2.5 },
       "sets": { "min": 2, "max": 3 },
       "reps": { "min": 10, "max": 15 },
-      "restSeconds": 75,
-      "alternates": []
+      "restSeconds": 75
     },
     {
       "id": "assisted-pullup",
@@ -74,7 +69,6 @@
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 6, "max": 10 },
       "restSeconds": 150,
-      "alternates": [],
       "notes": "机器一格 8.5 lb（10 / 18.5 / 27 / 35.5 / 44 / 52.5 / 61 / 69.5 / 78 …），助力越小越难，进阶方向是减一格"
     },
     {
@@ -85,7 +79,6 @@
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
       "restSeconds": 120,
-      "alternates": ["x-8lc0v", "x-1hhygo", "x-1llxy7w"],
       "notes": "肘向外、拉向胸口，练上背和后束"
     },
     {
@@ -97,7 +90,6 @@
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
       "restSeconds": 90,
-      "alternates": ["x-1v9sfk2", "x-1m70r8h", "x-1m9t810"],
       "notes": "重量以弱侧（左）为准，两侧组数相同"
     },
     {
@@ -107,8 +99,7 @@
       "load": { "value": 57.5, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 15, "max": 20 },
-      "restSeconds": 60,
-      "alternates": []
+      "restSeconds": 60
     },
     {
       "id": "biceps-curl",
@@ -117,8 +108,7 @@
       "load": { "value": 25, "unit": "lb", "step": 2.5 },
       "sets": { "min": 2, "max": 3 },
       "reps": { "min": 10, "max": 15 },
-      "restSeconds": 60,
-      "alternates": ["hammer-curl"]
+      "restSeconds": 60
     },
     {
       "id": "hanging-leg-raise",
@@ -127,8 +117,7 @@
       "load": { "bodyweight": true, "label": "自重" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 10, "max": 15 },
-      "restSeconds": 60,
-      "alternates": []
+      "restSeconds": 60
     },
     {
       "id": "seated-row-underhand",
@@ -138,7 +127,6 @@
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
       "restSeconds": 120,
-      "alternates": ["x-eg81et", "x-7x5am0"],
       "notes": "肘贴身、拉向肚脐，练背阔下部"
     },
     {
@@ -148,8 +136,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
-      "restSeconds": 90,
-      "alternates": ["x-1sjq6zg", "x-1k65nln"]
+      "restSeconds": 90
     },
     {
       "id": "pendulum-squat",
@@ -158,8 +145,7 @@
       "load": { "value": 540, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 6, "max": 10 },
-      "restSeconds": 180,
-      "alternates": []
+      "restSeconds": 180
     },
     {
       "id": "hip-thrust",
@@ -169,7 +155,6 @@
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
       "restSeconds": 120,
-      "alternates": ["x-15rnahv"],
       "notes": "顶端停 1 秒，骨盆略后倾，不用下背顶"
     },
     {
@@ -179,8 +164,7 @@
       "load": { "value": 120, "unit": "lb", "perSideLoad": true, "label": "120 每边" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 10, "max": 15 },
-      "restSeconds": 90,
-      "alternates": []
+      "restSeconds": 90
     },
     {
       "id": "leg-extension",
@@ -189,8 +173,7 @@
       "load": { "value": 70, "unit": "lb", "perSideLoad": true, "label": "70 每边" },
       "sets": { "min": 2, "max": 3 },
       "reps": { "min": 10, "max": 15 },
-      "restSeconds": 75,
-      "alternates": []
+      "restSeconds": 75
     },
     {
       "id": "walking-lunge",
@@ -201,7 +184,6 @@
       "sets": { "min": 1, "max": 2 },
       "reps": { "min": 20, "max": 30 },
       "restSeconds": 90,
-      "alternates": ["x-14ksby8"],
       "notes": "按距离计（米）。一周打 2 次球减到 2 组以内，打 3 次球跳过"
     },
     {
@@ -211,8 +193,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
-      "restSeconds": 60,
-      "alternates": ["x-i6lftb"]
+      "restSeconds": 60
     },
     {
       "id": "back-extension",
@@ -221,8 +202,7 @@
       "load": { "bodyweight": true, "label": "自重" },
       "sets": { "min": 2, "max": 2 },
       "reps": { "min": 12, "max": 15 },
-      "restSeconds": 60,
-      "alternates": []
+      "restSeconds": 60
     },
     {
       "id": "incline-machine-press",
@@ -232,7 +212,6 @@
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 10, "max": 12 },
       "restSeconds": 90,
-      "alternates": ["x-1uabu7k", "x-q3ua71"],
       "notes": "比推日的斜上卧推轻一档，不主练中胸"
     },
     {
@@ -243,7 +222,6 @@
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 10, "max": 12 },
       "restSeconds": 90,
-      "alternates": ["x-521bx5", "x-1ghtr1w"],
       "notes": "拉日已有正手宽距和反手窄距，这里用对握补第三种握法"
     },
     {
@@ -253,8 +231,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 2, "max": 2 },
       "reps": { "min": 15, "max": 20 },
-      "restSeconds": 60,
-      "alternates": ["lateral-raise"]
+      "restSeconds": 60
     },
     {
       "id": "rear-delt-fly",
@@ -263,8 +240,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 2, "max": 2 },
       "reps": { "min": 15, "max": 20 },
-      "restSeconds": 60,
-      "alternates": ["x-lme76v"]
+      "restSeconds": 60
     },
     {
       "id": "cable-overhead-extension",
@@ -274,7 +250,6 @@
       "sets": { "min": 2, "max": 2 },
       "reps": { "min": 12, "max": 15 },
       "restSeconds": 60,
-      "alternates": ["x-96fghb"],
       "notes": "双杠已练外侧 / 内侧头，这里补长头"
     },
     {
@@ -285,7 +260,6 @@
       "sets": { "min": 2, "max": 2 },
       "reps": { "min": 10, "max": 12 },
       "restSeconds": 60,
-      "alternates": ["biceps-curl"],
       "notes": "和周一拉日的二头弯举错开"
     },
     {
@@ -295,8 +269,7 @@
       "load": { "value": 105, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 6, "max": 10 },
-      "restSeconds": 150,
-      "alternates": []
+      "restSeconds": 150
     },
     {
       "id": "x-1uabu7k",
@@ -305,8 +278,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 6, "max": 10 },
-      "restSeconds": 150,
-      "alternates": []
+      "restSeconds": 150
     },
     {
       "id": "x-436g02",
@@ -315,8 +287,7 @@
       "load": { "value": 45, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 6, "max": 10 },
-      "restSeconds": 150,
-      "alternates": []
+      "restSeconds": 150
     },
     {
       "id": "x-1u3i5if",
@@ -325,8 +296,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 6, "max": 10 },
-      "restSeconds": 150,
-      "alternates": []
+      "restSeconds": 150
     },
     {
       "id": "x-pb2rix",
@@ -335,8 +305,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 6, "max": 10 },
-      "restSeconds": 150,
-      "alternates": []
+      "restSeconds": 150
     },
     {
       "id": "x-8lc0v",
@@ -345,8 +314,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
-      "restSeconds": 120,
-      "alternates": []
+      "restSeconds": 120
     },
     {
       "id": "x-1hhygo",
@@ -355,8 +323,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
-      "restSeconds": 120,
-      "alternates": []
+      "restSeconds": 120
     },
     {
       "id": "x-1llxy7w",
@@ -365,8 +332,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
-      "restSeconds": 120,
-      "alternates": []
+      "restSeconds": 120
     },
     {
       "id": "x-1v9sfk2",
@@ -376,7 +342,6 @@
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
       "restSeconds": 90,
-      "alternates": [],
       "perSide": true
     },
     {
@@ -387,7 +352,6 @@
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
       "restSeconds": 90,
-      "alternates": [],
       "perSide": true
     },
     {
@@ -398,7 +362,6 @@
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
       "restSeconds": 90,
-      "alternates": [],
       "perSide": true
     },
     {
@@ -408,8 +371,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
-      "restSeconds": 120,
-      "alternates": []
+      "restSeconds": 120
     },
     {
       "id": "x-7x5am0",
@@ -418,8 +380,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
-      "restSeconds": 120,
-      "alternates": []
+      "restSeconds": 120
     },
     {
       "id": "x-1sjq6zg",
@@ -428,8 +389,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
-      "restSeconds": 90,
-      "alternates": []
+      "restSeconds": 90
     },
     {
       "id": "x-1k65nln",
@@ -438,8 +398,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
-      "restSeconds": 90,
-      "alternates": []
+      "restSeconds": 90
     },
     {
       "id": "x-15rnahv",
@@ -448,8 +407,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
-      "restSeconds": 120,
-      "alternates": []
+      "restSeconds": 120
     },
     {
       "id": "x-14ksby8",
@@ -459,7 +417,6 @@
       "sets": { "min": 1, "max": 2 },
       "reps": { "min": 20, "max": 30 },
       "restSeconds": 90,
-      "alternates": [],
       "countUnit": "m"
     },
     {
@@ -469,8 +426,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 8, "max": 12 },
-      "restSeconds": 60,
-      "alternates": []
+      "restSeconds": 60
     },
     {
       "id": "x-q3ua71",
@@ -479,8 +435,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 10, "max": 12 },
-      "restSeconds": 90,
-      "alternates": []
+      "restSeconds": 90
     },
     {
       "id": "x-521bx5",
@@ -489,8 +444,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 10, "max": 12 },
-      "restSeconds": 90,
-      "alternates": []
+      "restSeconds": 90
     },
     {
       "id": "x-1ghtr1w",
@@ -499,8 +453,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 3, "max": 3 },
       "reps": { "min": 10, "max": 12 },
-      "restSeconds": 90,
-      "alternates": []
+      "restSeconds": 90
     },
     {
       "id": "x-lme76v",
@@ -509,8 +462,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 2, "max": 2 },
       "reps": { "min": 15, "max": 20 },
-      "restSeconds": 60,
-      "alternates": []
+      "restSeconds": 60
     },
     {
       "id": "x-96fghb",
@@ -519,8 +471,7 @@
       "load": { "value": null, "unit": "lb" },
       "sets": { "min": 2, "max": 2 },
       "reps": { "min": 12, "max": 15 },
-      "restSeconds": 60,
-      "alternates": []
+      "restSeconds": 60
     }
   ],
   "dayTemplates": [
@@ -530,11 +481,11 @@
       "type": "strength",
       "enabled": true,
       "exercises": [
-        { "id": "incline-bench" },
-        { "id": "assisted-dip" },
-        { "id": "seated-ohp" },
-        { "id": "lateral-raise" },
-        { "id": "db-overhead-tri" }
+        { "muscle": "上胸", "ids": ["incline-bench", "x-3oaui", "x-1uabu7k", "incline-machine-press"] },
+        { "muscle": "下胸/三头", "ids": ["assisted-dip", "x-436g02", "x-1u3i5if", "x-pb2rix"] },
+        { "muscle": "肩", "ids": ["seated-ohp"] },
+        { "muscle": "肩", "ids": ["lateral-raise"] },
+        { "muscle": "三头", "ids": ["db-overhead-tri"] }
       ]
     },
     {
@@ -544,12 +495,12 @@
       "enabled": true,
       "alternateWith": "pullB",
       "exercises": [
-        { "id": "assisted-pullup" },
-        { "id": "seated-row-wide" },
-        { "id": "one-arm-db-row" },
-        { "id": "face-pull" },
-        { "id": "biceps-curl" },
-        { "id": "hanging-leg-raise" }
+        { "muscle": "背", "ids": ["assisted-pullup"] },
+        { "muscle": "上背/后束", "ids": ["seated-row-wide", "x-8lc0v", "x-1hhygo", "x-1llxy7w"] },
+        { "muscle": "背阔", "ids": ["one-arm-db-row", "x-1v9sfk2", "x-1m70r8h", "x-1m9t810"] },
+        { "muscle": "后束/肩袖", "ids": ["face-pull"] },
+        { "muscle": "二头", "ids": ["biceps-curl", "hammer-curl"] },
+        { "muscle": "核心", "ids": ["hanging-leg-raise"] }
       ]
     },
     {
@@ -559,12 +510,12 @@
       "enabled": true,
       "alternateWith": "pull",
       "exercises": [
-        { "id": "assisted-pullup" },
-        { "id": "seated-row-underhand" },
-        { "id": "underhand-close-pulldown" },
-        { "id": "face-pull" },
-        { "id": "biceps-curl", "note": "反手日二头已经被划船和下拉练到，做 2 组或换锤式弯举" },
-        { "id": "hanging-leg-raise" }
+        { "muscle": "背", "ids": ["assisted-pullup"] },
+        { "muscle": "背阔/下背阔", "ids": ["seated-row-underhand", "x-eg81et", "x-7x5am0"] },
+        { "muscle": "背阔", "ids": ["underhand-close-pulldown", "x-1sjq6zg", "x-1k65nln"] },
+        { "muscle": "后束/肩袖", "ids": ["face-pull"] },
+        { "muscle": "二头", "ids": ["biceps-curl", "hammer-curl"], "note": "反手日二头已经被划船和下拉练到，做 2 组或换锤式弯举" },
+        { "muscle": "核心", "ids": ["hanging-leg-raise"] }
       ]
     },
     {
@@ -573,13 +524,13 @@
       "type": "strength",
       "enabled": true,
       "exercises": [
-        { "id": "pendulum-squat" },
-        { "id": "hip-thrust" },
-        { "id": "leg-curl" },
-        { "id": "leg-extension" },
-        { "id": "walking-lunge" },
-        { "id": "standing-calf-raise" },
-        { "id": "back-extension" }
+        { "muscle": "股四头/臀", "ids": ["pendulum-squat"] },
+        { "muscle": "臀", "ids": ["hip-thrust", "x-15rnahv"] },
+        { "muscle": "腘绳肌", "ids": ["leg-curl"] },
+        { "muscle": "股四头", "ids": ["leg-extension"] },
+        { "muscle": "股四头/臀", "ids": ["walking-lunge", "x-14ksby8"] },
+        { "muscle": "小腿", "ids": ["standing-calf-raise", "x-i6lftb"] },
+        { "muscle": "下背/臀/腘绳", "ids": ["back-extension"] }
       ]
     },
     {
@@ -588,14 +539,6 @@
       "type": "strength+cardio",
       "enabled": true,
       "enableWhen": "7.5 mg 剂量稳定、三餐结构跑顺之后（预计 2026-11 上旬）加入周四；在此之前周四只做二区",
-      "exercises": [
-        { "id": "incline-machine-press" },
-        { "id": "neutral-grip-pulldown" },
-        { "id": "cable-lateral-raise" },
-        { "id": "rear-delt-fly" },
-        { "id": "cable-overhead-extension" },
-        { "id": "hammer-curl" }
-      ],
       "cardio": {
         "id": "zone2",
         "name": "二区有氧",
@@ -603,7 +546,15 @@
         "durationMin": { "min": 30, "max": 40 },
         "heartRate": { "min": 120, "max": 140, "cap": 145 },
         "order": "力量之后"
-      }
+      },
+      "exercises": [
+        { "muscle": "上胸", "ids": ["incline-machine-press", "x-1uabu7k", "x-q3ua71"] },
+        { "muscle": "背阔", "ids": ["neutral-grip-pulldown", "x-521bx5", "x-1ghtr1w"] },
+        { "muscle": "肩", "ids": ["cable-lateral-raise", "lateral-raise"] },
+        { "muscle": "后束", "ids": ["rear-delt-fly", "x-lme76v"] },
+        { "muscle": "三头长头", "ids": ["cable-overhead-extension", "x-96fghb"] },
+        { "muscle": "肱桡肌/前臂", "ids": ["hammer-curl", "biceps-curl"] }
+      ]
     }
   ],
   "cardioTemplates": [

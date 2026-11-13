@@ -1,9 +1,9 @@
 // library-view.js — 底部"动作"页：动作库里的每个动作单独设置（用户 2026-11-13）。只画 DOM。
 // 列表按肌群分组；点一个进 #exercise/<id>（设置 + 记录折线，history-view.js renderExerciseChart）。
-// 不显示"替代动作"：替代关系以后放到训练日里按肌群放几个动作（docs/exercise-library-plan.md 第 2 步）。
+// 没有"替代动作"：替代关系在训练日里按肌群放几个动作（每周计划 → 训练日）。
 import { el, replaceChildren } from './dom.js';
 import { formatLoad, formatSetsReps } from './schedule.js';
-import { templatesUsing } from './exercise-library.js';
+import { usageText } from './exercise-library.js';
 
 function header(title, sub) {
   return el('header', { class: 'train-header' }, [
@@ -22,10 +22,12 @@ export function groupByMuscle(plan) {
   const order = [];
   const seen = new Set();
   for (const t of plan.dayTemplates || []) {
-    for (const ex of t.exercises || []) {
-      if (ex && !seen.has(ex.id)) {
-        seen.add(ex.id);
-        order.push(ex.id);
+    for (const slot of t.slots || []) {
+      for (const id of (slot && slot.ids) || []) {
+        if (!seen.has(id)) {
+          seen.add(id);
+          order.push(id);
+        }
       }
     }
   }
@@ -45,12 +47,11 @@ export function renderLibrary(root, { plan, saveError, onOpen, onAdd }) {
   const groups = groupByMuscle(plan);
   const total = groups.reduce((n, g) => n + g.list.length, 0);
   const row = (ex) => {
-    const days = templatesUsing(plan, ex.id).map((t) => t.name);
     return el('li', { class: 'hist-row' }, [
       el('button', { class: 'hist-row-btn lib-row-btn', type: 'button', onclick: () => onOpen(ex.id) }, [
         el('span', { class: 'hist-date', text: ex.name }),
         el('span', { class: 'hist-type', text: formatSetsReps(ex) }),
-        el('span', { class: 'hist-meta', text: `${formatLoad(ex.load)} · ${days.length ? days.join('、') : '没排进训练日'}` }),
+        el('span', { class: 'hist-meta', text: `${formatLoad(ex.load)} · ${usageText(plan, ex.id)}` }),
       ]),
     ]);
   };

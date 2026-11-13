@@ -17,8 +17,12 @@ const TABS = [
   { key: 'settings', href: '#settings', label: '设置' },
 ];
 
-// 页面 → 高亮哪个标签；null = 这页不显示固定栏
-export function tabForView(view) {
+// 页面 → 高亮哪个标签；null = 这页不显示固定栏。from：动作详情是从哪一页点进来的（每周计划 / 历史 / 动作页）
+export function tabForView(view, from = null) {
+  if (view === 'exercise' && from) {
+    if (from.startsWith('#plan')) return 'plan';
+    if (from.startsWith('#history')) return 'today';
+  }
   switch (view) {
     case 'home':
     case 'history': // 历史记录从"今天"进

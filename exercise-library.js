@@ -1,16 +1,18 @@
 // exercise-library.js — 动作库（docs/exercise-library-plan.md）。纯函数，不碰数据库。
 //
-// 存储形状（库里的计划、备份文件、training-plan.json）：
-//   plan.libraryVersion = 1
-//   plan.exercises = [{ id, name, muscle, load, sets, reps, restSeconds, perSide?, countUnit?, notes?, alternates: [动作 id] }]
-//   plan.dayTemplates[].exercises = [{ id, note? }]   训练日只排顺序，note = 当天备注
-//   plan.mergedIds = { 旧 id: 新 id }                  迁移时合并掉的动作，导入旧备份时照样换
-// 运行时形状（state.plan = expandPlan(...)）：dayTemplates[].exercises 是完整动作对象（库里的定义 + 当天备注），
-//   每个动作的 alternates 展开成完整动作对象；另带 slots（存储形状）和 library（id → 完整动作），compactPlan 存库前去掉。
-// 训练记录：entry.exerciseId = 计划里的那个动作；entry.alternateId = 正在用的替代动作（null = 原动作）；
-//   set.exerciseId = 这组实际做的动作，只在用替代动作时写，没写就是 entry.exerciseId。
+// 存储形状（库里的计划、备份文件、training-plan.json），第 2 版（2026-11-13 用户定：替代动作不挂在动作上，
+// 训练日里按肌群放几个动作）：
+//   plan.libraryVersion = 2
+//   plan.exercises = [{ id, name, muscle, load, sets, reps, restSeconds, perSide?, countUnit?, notes? }]   每个动作单独设置
+//   plan.dayTemplates[].exercises = [{ muscle, ids: [动作 id…], note? }]   一组 = 一个肌群，ids[0] 是默认动作，note = 当天备注
+//   plan.mergedIds = { 旧 id: 新 id }                                      迁移时合并掉的动作，导入旧备份时照样换
+// 第 1 版（v0.25 ～ v0.26）：动作上挂 alternates: [id]，训练日 [{ id, note? }]；toSlotPlan 换成第 2 版。
+// 运行时形状（state.plan = expandPlan(...)）：dayTemplates[].exercises = 每组的默认动作（完整对象），它的 alternates =
+//   同组的其他动作（完整对象），slotMuscle = 组名；另带 slots（存储形状）和 library（id → 完整动作），compactPlan 存库前去掉。
+// 训练记录：entry.exerciseId = 这组的默认动作（当 key 用）；entry.alternateId = 换上来的动作（null = 默认动作）；
+//   set.exerciseId = 这组实际做的动作，只在换了动作时写，没写就是 entry.exerciseId。
 
-export const LIBRARY_VERSION = 1;
+export const LIBRARY_VERSION = 2;
 
 // 名字不同、其实是同一个动作（用户 2026-11-12 确认合并）。每组第一个是准名
 const SAME_EXERCISE = [
@@ -36,8 +38,13 @@ export function idForName(name) {
   return `x-${h.toString(36)}`; // 和计划编辑新建的 ex-时间戳 分开
 }
 
+// 第 1 版或第 2 版的动作库计划（存储形状或运行时形状）
 export function isLibraryPlan(plan) {
-  return Boolean(plan && Array.isArray(plan.exercises) && plan.libraryVersion >= LIBRARY_VERSION);
+  return Boolean(plan && Array.isArray(plan.exercises) && plan.libraryVersion >= 1);
+}
+
+export function isSlotPlan(plan) {
+  return isLibraryPlan(plan) && plan.libraryVersion >= 2;
 }
 
 // 当前实际在做的动作 / 某一组实际做的动作
@@ -72,7 +79,6 @@ function exerciseFromAlternate(name, base, load) {
     sets: base && base.sets ? clone(base.sets) : { min: 3, max: 3 },
     reps: base && base.reps ? clone(base.reps) : { min: 8, max: 12 },
     restSeconds: base && typeof base.restSeconds === 'number' ? base.restSeconds : 90,
-    alternates: [],
   };
   if (base && base.perSide) ex.perSide = true;
   if (base && base.countUnit) ex.countUnit = base.countUnit;
@@ -182,13 +188,6 @@ function buildFromOldPlan(old) {
   return { ctx, dayTemplates };
 }
 
-function planFromContext(base, ctx, dayTemplates) {
-  const plan = { ...base, libraryVersion: LIBRARY_VERSION, exercises: [...ctx.byId.values()], dayTemplates };
-  if (Object.keys(ctx.mergedIds).length) plan.mergedIds = ctx.mergedIds;
-  else delete plan.mergedIds;
-  return plan;
-}
-
 // 一条旧版记录 → 新版：usedAlternate（名字）换成动作 id，合并掉的 id 换成新 id。新版记录原样返回
 function migrateSession(s, ctx) {
   if (!s || !Array.isArray(s.entries)) return s;
@@ -223,18 +222,64 @@ function migrateSession(s, ctx) {
   return next;
 }
 
-// 计划 + 记录一起迁移。plan 可以是旧版或新版（新版时只换记录，遇到不认识的替代动作名会往库里加动作）。
-// 返回 { plan（存储形状）, sessions, planChanged, sessionsChanged: [改过的记录] }
+function planFromContext(base, ctx, dayTemplates, version) {
+  const exercises = [...ctx.byId.values()].map((e) => {
+    if (version < 2) return { alternates: [], ...e };
+    const { alternates: _ignored, ...rest } = e; // 第 2 版动作上没有替代关系
+    return rest;
+  });
+  const plan = { ...base, libraryVersion: version, exercises, dayTemplates };
+  if (Object.keys(ctx.mergedIds).length) plan.mergedIds = ctx.mergedIds;
+  else delete plan.mergedIds;
+  return plan;
+}
+
+// 第 1 版（动作上挂 alternates，训练日 [{ id, note? }]）→ 第 2 版（训练日按肌群放几个动作）。
+// 每个动作原来的替代动作变成同一组里的其他选项；肌群名先用原动作的"肌群"；同一个训练日里已经出现过的动作不再放进别的组
+export function toSlotPlan(plan) {
+  if (!isLibraryPlan(plan) || plan.libraryVersion >= 2) return plan;
+  const byId = new Map(plan.exercises.map((e) => [e.id, e]));
+  const dayTemplates = (plan.dayTemplates || []).map((t) => {
+    const slots = t.exercises || [];
+    const used = new Set(slots.map((s) => s && s.id).filter(Boolean));
+    return {
+      ...t,
+      exercises: slots
+        .filter((s) => s && s.id)
+        .map((s) => {
+          const ex = byId.get(s.id);
+          const ids = [s.id];
+          for (const id of (ex && ex.alternates) || []) {
+            if (byId.has(id) && !used.has(id)) {
+              ids.push(id);
+              used.add(id);
+            }
+          }
+          const slot = { muscle: (ex && ex.muscle) || '', ids };
+          if (s.note) slot.note = s.note;
+          return slot;
+        }),
+    };
+  });
+  const exercises = plan.exercises.map(({ alternates: _ignored, ...e }) => e);
+  return { ...plan, libraryVersion: 2, exercises, dayTemplates };
+}
+
+// 计划 + 记录一起迁移。plan 可以是旧版、第 1 版或第 2 版（第 2 版时只换记录，遇到不认识的替代动作名会往库里加动作）。
+// 返回 { plan（存储形状，第 2 版）, sessions, planChanged, sessionsChanged: [改过的记录] }
 export function migrateData({ plan, sessions = [] }) {
   let ctx;
-  let nextPlan;
+  let nextTemplates;
+  let version;
   let planChanged = false;
   if (isLibraryPlan(plan)) {
     ctx = libraryContext(compactPlan(plan));
+    version = plan.libraryVersion;
   } else if (plan) {
     const built = buildFromOldPlan(plan);
     ctx = built.ctx;
-    nextPlan = built.dayTemplates;
+    nextTemplates = built.dayTemplates;
+    version = 1;
     planChanged = true;
   } else {
     ctx = libraryContext(null);
@@ -243,13 +288,18 @@ export function migrateData({ plan, sessions = [] }) {
   const sessionsChanged = out.filter((s, i) => s !== sessions[i]);
   if (ctx.wasAdded()) planChanged = true;
   let resultPlan = plan ? compactPlan(plan) : null;
-  if (plan && planChanged) resultPlan = planFromContext(resultPlan, ctx, nextPlan || resultPlan.dayTemplates);
+  if (plan && planChanged) resultPlan = planFromContext(resultPlan, ctx, nextTemplates || resultPlan.dayTemplates, version);
+  if (resultPlan && resultPlan.libraryVersion < LIBRARY_VERSION) {
+    resultPlan = toSlotPlan(resultPlan);
+    planChanged = true;
+  }
   return { plan: resultPlan, sessions: out, planChanged, sessionsChanged };
 }
 
-// 只迁移计划（内置计划、空白计划）
+// 只迁移计划（内置计划、空白计划）：旧版和第 1 版都换成第 2 版
 export function ensureLibraryPlan(plan) {
-  return isLibraryPlan(plan) ? plan : migrateData({ plan }).plan;
+  if (isSlotPlan(plan)) return plan;
+  return migrateData({ plan }).plan;
 }
 
 // 合并导入：导入的记录用到、现在的动作库里却没有的动作，从文件里的计划抄过来（不然历史里只剩 id）。
@@ -272,35 +322,30 @@ export function adoptReferencedExercises(plan, filePlan, sessions) {
   const have = new Set(p.exercises.map((e) => e.id));
   const add = file.exercises.filter((e) => used.has(e.id) && !have.has(e.id));
   if (!add.length) return { plan: p, changed: false };
-  return { plan: { ...p, exercises: [...p.exercises, ...add.map((e) => clone(e))] }, changed: true };
+  return { plan: { ...p, exercises: [...p.exercises, ...add.map(({ alternates: _ignored, ...e }) => clone(e))] }, changed: true };
 }
 
 /* ---------- 运行时展开 / 存库前收起 ---------- */
 
-function fullExercise(ex, raw) {
-  const alternates = (ex.alternates || [])
-    .map((id) => raw[id])
-    .filter(Boolean)
-    .map(({ alternates: _ignored, ...a }) => clone(a));
-  return { ...clone(ex), alternates };
-}
-
+// 运行时每个训练日：exercises = 每组的默认动作（完整对象），它的 alternates = 同组的其他动作（完整对象），
+// slotMuscle = 组名，notes = 当天备注优先；空组（还没放动作）不进 exercises。slots 保留存储形状给计划编辑用。
 export function expandPlan(plan) {
   if (!isLibraryPlan(plan)) return plan;
-  const compact = compactPlan(plan);
-  const raw = {};
-  for (const ex of compact.exercises) raw[ex.id] = ex;
+  const compact = toSlotPlan(compactPlan(plan));
   const library = {};
-  for (const ex of compact.exercises) library[ex.id] = fullExercise(ex, raw);
+  for (const ex of compact.exercises) library[ex.id] = clone(ex);
   const dayTemplates = (compact.dayTemplates || []).map((t) => {
     const slots = t.exercises || [];
-    const exercises = slots
-      .filter((slot) => slot && raw[slot.id])
-      .map((slot) => {
-        const ex = fullExercise(raw[slot.id], raw);
-        if (slot.note) ex.notes = slot.note; // 当天备注优先
-        return ex;
-      });
+    const exercises = [];
+    for (const slot of slots) {
+      const ids = ((slot && slot.ids) || []).filter((id) => library[id]);
+      if (!ids.length) continue;
+      const ex = clone(library[ids[0]]);
+      ex.alternates = ids.slice(1).map((id) => clone(library[id]));
+      ex.slotMuscle = slot.muscle || '';
+      if (slot.note) ex.notes = slot.note; // 当天备注优先
+      exercises.push(ex);
+    }
     return { ...t, slots, exercises, library };
   });
   return { ...compact, dayTemplates, library };
@@ -318,7 +363,7 @@ export function compactPlan(plan) {
   };
 }
 
-// 运行时查动作（含不在任何训练日里的替代动作）；找不到返回 null
+// 运行时查动作（不管在不在训练日里）；找不到返回 null
 export function exerciseById(plan, id) {
   if (!plan || !id) return null;
   if (plan.library && plan.library[id]) return plan.library[id];
@@ -335,116 +380,119 @@ export function withKeptLibrary(builtin, oldPlan) {
   const old = compactPlan(oldPlan);
   if (!isLibraryPlan(next) || !isLibraryPlan(old)) return next;
   const have = new Set(next.exercises.map((e) => e.id));
-  const exercises = [...next.exercises, ...old.exercises.filter((e) => !have.has(e.id))];
+  const exercises = [...next.exercises, ...old.exercises.filter((e) => !have.has(e.id)).map(({ alternates: _ignored, ...e }) => e)];
   const mergedIds = { ...(old.mergedIds || {}), ...(next.mergedIds || {}) };
   const out = { ...next, exercises };
   if (Object.keys(mergedIds).length) out.mergedIds = mergedIds;
   return out;
 }
 
-/* ---------- 计划编辑（训练日里改动作 = 改动作库里那一条，所有训练日一起变） ---------- */
+// 这个动作用在哪些训练日：[{ template, isDefault }]（运行时形状）
+export function usageOf(plan, id) {
+  const out = [];
+  for (const t of plan.dayTemplates || []) {
+    for (const slot of t.slots || []) {
+      const i = ((slot && slot.ids) || []).indexOf(id);
+      if (i >= 0) {
+        out.push({ template: t, isDefault: i === 0 });
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+export function usageText(plan, id) {
+  const u = usageOf(plan, id);
+  return u.length ? u.map((x) => (x.isDefault ? x.template.name : `${x.template.name}（可换）`)).join('、') : '没排进训练日';
+}
+
+/* ---------- 动作库编辑（"动作"页：每个动作单独设置，所有训练日一起变） ---------- */
 
 function mapTemplate(plan, templateId, fn) {
   return { ...plan, dayTemplates: plan.dayTemplates.map((t) => (t.id === templateId ? fn(t) : t)) };
 }
 
-// 表单里的替代动作 [{ name, load? }] → 动作 id；同名的用已有动作（写了重量就更新它的重量），没有的按原动作新建
-function resolveAlternateSpecs(exercises, specs, base) {
-  const list = [...exercises];
-  const ids = [];
-  for (const spec of specs || []) {
-    if (!spec || !spec.name) continue;
-    const key = nameKey(spec.name);
-    let idx = list.findIndex((e) => nameKey(e.name) === key);
-    if (idx < 0) {
-      list.push(exerciseFromAlternate(spec.name, base, spec.load));
-      idx = list.length - 1;
-    } else if (spec.load && spec.load.value != null && (list[idx].load || {}).value !== spec.load.value) {
-      list[idx] = { ...list[idx], load: { ...(list[idx].load || { unit: 'lb' }), value: spec.load.value } };
-    }
-    const id = list[idx].id;
-    if (id !== base.id && !ids.includes(id)) ids.push(id);
-  }
-  return { exercises: list, ids };
-}
-
-// 把表单的值写进动作库。form 是 plan-edit.js exerciseFromForm 的结果（alternates 是 [{ name, load? }]，notes 是备注）
-// form.alternates 为 undefined（"动作"页的表单没有替代动作这一栏）时保留原来的替代关系
-function writeExercise(plan, templateId, id, form) {
-  const { alternates: specs, notes, id: _ignored, ...def } = form;
+// 把表单的值写进动作库。form 是 plan-edit.js exerciseFromForm 的结果（不带 id）
+function writeExercise(plan, id, form) {
+  const { alternates: _alts, id: _ignored, notes, ...def } = form;
+  const next = { ...def, id };
+  if (notes) next.notes = notes;
   const exists = plan.exercises.some((e) => e.id === id);
-  let exercises = exists ? plan.exercises : [...plan.exercises, { id, ...def, alternates: [] }];
-  const base = { id, ...def };
-  const before = exercises.find((e) => e.id === id);
-  const resolved =
-    specs === undefined ? { exercises, ids: (before && before.alternates) || [] } : resolveAlternateSpecs(exercises, specs, base);
-  exercises = resolved.exercises;
-  const t = plan.dayTemplates.find((x) => x.id === templateId);
-  const slot = t ? (t.exercises || []).find((s) => s.id === id) : null;
-  const dayNote = Boolean(slot && slot.note); // 这个训练日有当天备注：备注框改的是当天备注
-  exercises = exercises.map((e) => {
-    if (e.id !== id) return e;
-    const next = { ...def, id, alternates: resolved.ids };
-    if (!dayNote && notes) next.notes = notes;
-    if (dayNote && e.notes) next.notes = e.notes;
-    return next;
-  });
-  let next = { ...plan, exercises };
-  if (dayNote) {
-    next = mapTemplate(next, templateId, (tt) => ({
-      ...tt,
-      exercises: tt.exercises.map((s) => (s.id === id ? (notes ? { id, note: notes } : { id }) : s)),
-    }));
-  }
-  return next;
+  const exercises = exists ? plan.exercises.map((e) => (e.id === id ? next : e)) : [...plan.exercises, next];
+  return { ...plan, exercises };
 }
 
-export function updateLibraryExercise(plan, templateId, exerciseId, form) {
-  return expandPlan(writeExercise(compactPlan(plan), templateId, exerciseId, form));
+export function updateLibraryExercise(plan, _templateId, exerciseId, form) {
+  return expandPlan(writeExercise(compactPlan(plan), exerciseId, form));
 }
 
-// 新加动作：动作库里已经有同名的就直接用那一条（不同天练同一个动作，记录和设置共用），
-// 表单里的值不覆盖它——新增表单是空白默认值，覆盖会把别的训练日的组数次数改掉；要改就加完再点"修改"
-export function addLibraryExercise(plan, templateId, newId, form) {
-  const p = compactPlan(plan);
-  const same = p.exercises.find((e) => nameKey(e.name) === nameKey(form.name));
-  const id = same ? same.id : newId;
-  let next = same ? p : writeExercise(p, templateId, id, form);
-  next = mapTemplate(next, templateId, (t) =>
-    (t.exercises || []).some((s) => s.id === id) ? t : { ...t, exercises: [...(t.exercises || []), { id }] }
-  );
-  return expandPlan(next);
-}
-
-// "动作"页新增：动作库里已经有同名的就不新建，返回那一条的 id
+// 新增动作：动作库里已经有同名的就不新建，返回那一条的 id（表单值不覆盖它）
 export function createLibraryExercise(plan, newId, form) {
   const p = compactPlan(plan);
   const same = p.exercises.find((e) => nameKey(e.name) === nameKey(form.name));
   if (same) return { plan: expandPlan(p), id: same.id, existed: true };
-  return { plan: expandPlan(writeExercise(p, null, newId, form)), id: newId, existed: false };
+  return { plan: expandPlan(writeExercise(p, newId, form)), id: newId, existed: false };
 }
 
-// 哪些训练日用了这个动作（运行时形状）
-export function templatesUsing(plan, id) {
-  return (plan.dayTemplates || []).filter((t) => (t.exercises || []).some((e) => e && e.id === id));
-}
+/* ---------- 训练日编辑：每组 = 肌群名 + 几个动作（第一个是默认），按组的序号改 ---------- */
 
-// 从训练日里拿掉；动作库里的那一条留着，历史记录里的名字还认得
-export function removeSlot(plan, templateId, exerciseId) {
+function mapSlots(plan, templateId, fn) {
   const p = compactPlan(plan);
-  return expandPlan(mapTemplate(p, templateId, (t) => ({ ...t, exercises: (t.exercises || []).filter((s) => s.id !== exerciseId) })));
+  return expandPlan(mapTemplate(p, templateId, (t) => ({ ...t, exercises: fn([...(t.exercises || [])]) })));
 }
 
-export function moveSlot(plan, templateId, exerciseId, dir) {
-  const p = compactPlan(plan);
-  return expandPlan(
-    mapTemplate(p, templateId, (t) => {
-      const list = [...(t.exercises || [])];
-      const i = list.findIndex((s) => s.id === exerciseId);
-      const j = i + dir;
-      if (i < 0 || j < 0 || j >= list.length) return t;
-      [list[i], list[j]] = [list[j], list[i]];
-      return { ...t, exercises: list };
+function move(list, i, dir) {
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= list.length) return list;
+  const out = [...list];
+  [out[i], out[j]] = [out[j], out[i]];
+  return out;
+}
+
+// 这个训练日里已经用了的动作（同一个动作在一天里只能出现一次：训练记录按它当 key）
+export function idsInTemplate(plan, templateId) {
+  const t = (plan.dayTemplates || []).find((x) => x.id === templateId);
+  return new Set(((t && (t.slots || t.exercises)) || []).flatMap((s) => (s && s.ids) || []));
+}
+
+export function addSlot(plan, templateId, muscle, note = '') {
+  return mapSlots(plan, templateId, (slots) => [...slots, note ? { muscle, ids: [], note } : { muscle, ids: [] }]);
+}
+
+export function editSlot(plan, templateId, index, { muscle, note }) {
+  return mapSlots(plan, templateId, (slots) =>
+    slots.map((s, i) => {
+      if (i !== index) return s;
+      const next = { ...s, muscle };
+      if (note) next.note = note;
+      else delete next.note;
+      return next;
     })
   );
+}
+
+export function moveSlotGroup(plan, templateId, index, dir) {
+  return mapSlots(plan, templateId, (slots) => move(slots, index, dir));
+}
+
+export function removeSlotGroup(plan, templateId, index) {
+  return mapSlots(plan, templateId, (slots) => slots.filter((_, i) => i !== index));
+}
+
+export function addToSlot(plan, templateId, index, exerciseId) {
+  if (idsInTemplate(plan, templateId).has(exerciseId)) return plan;
+  return mapSlots(plan, templateId, (slots) => slots.map((s, i) => (i === index ? { ...s, ids: [...(s.ids || []), exerciseId] } : s)));
+}
+
+// 组里调顺序；挪到第一个 = 设为默认
+export function moveInSlot(plan, templateId, index, exerciseId, dir) {
+  return mapSlots(plan, templateId, (slots) =>
+    slots.map((s, i) => (i === index ? { ...s, ids: move(s.ids || [], (s.ids || []).indexOf(exerciseId), dir) } : s))
+  );
+}
+
+// 从组里拿掉；动作库里的那一条留着，历史记录里的名字还认得
+export function removeFromSlot(plan, templateId, index, exerciseId) {
+  return mapSlots(plan, templateId, (slots) => slots.map((s, i) => (i === index ? { ...s, ids: (s.ids || []).filter((id) => id !== exerciseId) } : s)));
 }

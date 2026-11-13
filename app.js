@@ -34,6 +34,7 @@ import {
   bestSetOf,
   orderedEntries,
   restReferenceSeconds,
+  lastSetExercise,
 } from './workout.js';
 import { renderTrain, renderTrainUnavailable, renderAlternateSheet, renderFinishSheet, updateRestClock, updateLastRef, restClockState, formatClock } from './train-view.js';
 import { putSession, deleteSession, findDraft, listSessions, listAllSessionsForMigration, requestPersistentStorage, putSessions, clearSessions, clearSettings, isPersisted, getSetting, putSetting, onWrite } from './db.js';
@@ -48,14 +49,10 @@ import {
   upsertOverride,
   removeOverride,
   setTemplateEnabled,
-  updateExercise,
-  moveExercise,
-  addExercise,
-  removeExercise,
   newExerciseId,
   exerciseFromForm,
 } from './plan-edit.js';
-import { renderPlanOverview, renderPlanDay, renderAssignmentSheet, renderExerciseSheet } from './plan-view.js';
+import { renderPlanOverview, renderPlanDay, renderAssignmentSheet, renderExerciseSheet, renderSlotSheet, renderExercisePicker } from './plan-view.js';
 import { loadSettings, saveSettings, normalizeSettings } from './settings.js';
 import { setDisplayUnit, formatWeight } from './units.js';
 import { setWakeLock, wakeLockSupported, unlockAudio, beep, audioSupported } from './device.js';
@@ -65,13 +62,14 @@ import { parseWorkoutsFile, guessKind, conflictWith, sessionFromItem } from './h
 import { applySkip, setDayTo, undoOverride } from './skip-day.js';
 import { renderSkipSheet } from './skip-view.js';
 import { native } from './native.js';
-import { migrateData, ensureLibraryPlan, expandPlan, compactPlan, isLibraryPlan, isOldSession, currentExerciseId, withKeptLibrary, adoptReferencedExercises, exerciseById, createLibraryExercise, updateLibraryExercise } from './exercise-library.js';
+import { migrateData, ensureLibraryPlan, expandPlan, compactPlan, isLibraryPlan, isSlotPlan, isOldSession, currentExerciseId, withKeptLibrary, adoptReferencedExercises, exerciseById, createLibraryExercise, updateLibraryExercise, addSlot, editSlot, moveSlotGroup, removeSlotGroup, addToSlot, moveInSlot, removeFromSlot, idsInTemplate } from './exercise-library.js';
 import { renderTabBar, tabForView } from './tab-bar.js';
-import { renderLibrary } from './library-view.js';
+import { renderLibrary, groupByMuscle } from './library-view.js';
 
-const APP_VERSION = '0.26.0';
+const APP_VERSION = '0.27.0';
 const BACKUP_META_KEY = 'backup';
 const PRE_LIBRARY_KEY = 'preLibraryBackup'; // 动作库迁移前的计划和记录原样（docs/exercise-library-plan.md），出问题能找回
+const PRE_SLOT_KEY = 'preSlotBackup'; // 第 1 版动作库换成按肌群分组之前的计划
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
 
 // 全局状态：计划、当前"今天"、进行中的训练、最近一次保存错误（null = 正常）。
@@ -92,7 +90,7 @@ const state = {
   historyReady: false, // 已读到结果
   historyError: null, // 读取失败的原因
   inputs: null,
-  chartFrom: null, // 从哪次训练详情点进折线页的，返回时回到它
+  detailFrom: null, // 动作详情是从哪一页点进来的（#exercises / #plan/day/… / #history/…），返回时回到它
   activitySheet: null, // 打球 / 有氧 / 散步记录选单打开时的参数
   builtinPlan: null, // training-plan.json 的内容，只作内置模板
   firstRun: false, // 库里还没有计划：显示首次启动页
@@ -218,13 +216,16 @@ function upgradeSession(row) {
   return row ? upgradeSessions([row])[0] : row;
 }
 
-// 动作库迁移（2026-11-12）：库里还是旧计划、或者还有旧格式的记录（上次没换完）时，计划和全部记录（真实 + 测试模式）
-// 一起换成新格式，在一个事务里写；第一次换之前把计划和记录原样存一份。返回存储形状的计划
+// 动作库迁移（2026-11-12 / 11-13）：库里还是旧计划或第 1 版动作库（替代动作挂在动作上）、或者还有旧格式的记录
+// （上次没换完）时，计划和全部记录（真实 + 测试模式）一起换成第 2 版，在一个事务里写；第一次换之前把计划和记录原样存一份。
+// 返回存储形状的计划
 async function migrateStoredData(plan) {
   const sessions = await listAllSessionsForMigration();
-  if (isLibraryPlan(plan) && !sessions.some(isOldSession)) return plan;
+  if (isSlotPlan(plan) && !sessions.some(isOldSession)) return plan;
   const saved = await getSetting(PRE_LIBRARY_KEY);
   if (!saved) await putSetting(PRE_LIBRARY_KEY, { savedAt: Date.now(), plan, sessions });
+  // 第 1 版（替代动作挂在动作上）换成按肌群分组会丢掉放不进组的替代关系：换之前把第 1 版计划也存一份
+  if (plan && plan.libraryVersion === 1 && !(await getSetting(PRE_SLOT_KEY))) await putSetting(PRE_SLOT_KEY, { savedAt: Date.now(), plan });
   const result = migrateData({ plan, sessions });
   if (result.planChanged || result.sessionsChanged.length) await savePlanWithSessions(result.plan, result.sessionsChanged);
   return result.plan;
@@ -276,12 +277,13 @@ function persistSession(session) {
 
 /* ---------- 首页 ---------- */
 
+// 每组（肌群）一行：默认动作；组里还有别的动作就在重量后面写"可换 N 个"（用户 2026-11-13）
 function renderExerciseList(template) {
   const items = (template.exercises || []).map((ex) =>
     el('li', { class: 'exercise' }, [
       el('span', { class: 'ex-name', text: ex.name }),
       el('span', { class: 'ex-scheme', text: formatSetsReps(ex) }),
-      el('span', { class: 'ex-load', text: formatLoad(ex.load) }),
+      el('span', { class: 'ex-load', text: `${formatLoad(ex.load)}${(ex.alternates || []).length ? ` · 可换 ${ex.alternates.length} 个` : ''}` }),
     ])
   );
   const list = el('ul', { class: 'exercise-list', role: 'list' }, items);
@@ -735,11 +737,11 @@ function finishRows(session, template) {
     const load = ex ? ex.load || {} : {};
     const n = entry.sets.length;
     const best = n ? bestSetOf(entry.sets, load) : null;
-    const bestText = best ? formatSets([best], { bodyweight: Boolean(load.bodyweight), countUnit: base ? base.countUnit : null }) : '';
+    const bestText = best ? formatSets([best], { bodyweight: Boolean(load.bodyweight), countUnit: ex ? ex.countUnit : null }) : '';
     if (entry.status === 'skipped') return { name, status: 'skipped', text: '跳过' };
     if (!n) return { name, status: 'none', text: '未做' };
     if (entry.status === 'done') return { name, status: 'done', text: `完成 · ${n} 组 · 最佳 ${bestText}` };
-    return { name, status: 'partial', text: `未做完 · ${n}${base ? `/${targetSets(base, entry)}` : ''} 组 · 最佳 ${bestText}` };
+    return { name, status: 'partial', text: `未做完 · ${n}${ex ? `/${targetSets(ex, entry)}` : ''} 组 · 最佳 ${bestText}` };
   });
 }
 
@@ -1002,7 +1004,8 @@ function saveEntryEdit(session, exerciseId, { alternateId, sets }) {
     if (alternateId) set.exerciseId = alternateId;
     return set;
   });
-  const status = newSets.length === 0 ? 'skipped' : base && newSets.length >= targetSets(base, old) ? 'done' : 'partial';
+  const actual = (alternateId && exerciseById(state.plan, alternateId)) || base; // 换了动作就按换上来的那个动作的组数
+  const status = newSets.length === 0 ? 'skipped' : actual && newSets.length >= targetSets(actual, old) ? 'done' : 'partial';
   const next = {
     ...session,
     entries: session.entries.map((e) => (e.exerciseId === exerciseId ? { ...e, alternateId: alternateId || null, sets: newSets, status } : e)),
@@ -1052,6 +1055,7 @@ function renderHistoryEditSheet(root, session) {
     entry,
     base: (template ? findExercise(template, edit.exerciseId) : null) || exerciseById(state.plan, edit.exerciseId),
     currentAlt: entry.alternateId ? exerciseById(state.plan, entry.alternateId) : null,
+    exerciseOf: (id) => exerciseById(state.plan, id),
     onSave: (values) => saveEntryEdit(session, edit.exerciseId, values),
     onClose: close,
   });
@@ -1080,11 +1084,10 @@ function renderHistoryView(root, view) {
       renderTrainUnavailable(root, { message: loading ? '读取中…' : '找不到这次训练的记录。', onBack: () => { location.hash = '#history'; } });
       return;
     }
-    state.chartFrom = session.id;
     renderSessionDetail(root, {
       session,
       plan: state.plan,
-      onOpenExercise: (exerciseId) => { location.hash = `#exercise/${encodeURIComponent(exerciseId)}`; },
+      onOpenExercise: (exerciseId) => openExerciseDetail(exerciseId, `#history/${encodeURIComponent(session.id)}`),
       onBack: () => { location.hash = '#history'; },
       onDelete: () => deleteRecord(session),
       onEditEntry: (exerciseId) => {
@@ -1105,7 +1108,7 @@ function renderHistoryView(root, view) {
     plan: state.plan,
     sessions,
     loading,
-    onBack: () => { location.hash = state.chartFrom ? `#history/${encodeURIComponent(state.chartFrom)}` : '#exercises'; },
+    onBack: () => { location.hash = state.detailFrom || '#exercises'; },
     onEdit: exerciseById(state.plan, exerciseId) ? () => { state.libSheet = { kind: 'edit', id: exerciseId }; render(); } : null,
   });
   renderLibrarySheet(root);
@@ -1113,13 +1116,18 @@ function renderHistoryView(root, view) {
 
 /* ---------- 动作页（底部固定栏"动作"）：动作库里每个动作单独设置 ---------- */
 
+// 进动作详情，记住从哪一页来（返回回到那页，固定栏也高亮那一栏）
+function openExerciseDetail(id, from) {
+  state.detailFrom = from;
+  location.hash = `#exercise/${encodeURIComponent(id)}`;
+}
+
 function renderLibraryView(root) {
-  state.chartFrom = null; // 从这里点进动作详情，返回回到动作页
   ensureHistory();
   renderLibrary(root, {
     plan: state.plan,
     saveError: state.saveError,
-    onOpen: (id) => { location.hash = `#exercise/${encodeURIComponent(id)}`; },
+    onOpen: (id) => openExerciseDetail(id, '#exercises'),
     onAdd: () => { state.libSheet = { kind: 'add' }; render(); },
   });
   renderLibrarySheet(root);
@@ -1140,7 +1148,7 @@ function renderLibrarySheet(root) {
         state.libSheet = null;
         applyPlan(r.plan);
         if (r.existed) window.alert(`动作库里已经有「${form.name}」，打开它。要改就点"修改设置"。`);
-        location.hash = `#exercise/${encodeURIComponent(r.id)}`;
+        openExerciseDetail(r.id, '#exercises');
       },
       onClose: close,
     });
@@ -1248,30 +1256,61 @@ function renderPlanView(root, view) {
     renderTrainUnavailable(root, { message: '找不到这个训练日。', onBack: () => { location.hash = '#plan'; } });
     return;
   }
+  const slotName = (index) => ((template.slots || [])[index] || {}).muscle || '这一组';
   renderPlanDay(root, {
     template,
     saveError: state.saveError,
-    onEditExercise: (exerciseId) => openPlanSheet({ kind: 'exercise', templateId, exerciseId }),
-    onAdd: () => openPlanSheet({ kind: 'exercise', templateId, exerciseId: null }),
-    onMove: (exerciseId, dir) => applyPlan(moveExercise(plan, templateId, exerciseId, dir)),
-    onRemove: (exerciseId) => {
-      const ex = findExercise(template, exerciseId);
-      if (!window.confirm(`从「${template.name}」里删掉「${ex ? ex.name : exerciseId}」？已保存的记录不受影响。`)) return;
-      applyPlan(removeExercise(plan, templateId, exerciseId));
+    onOpenExercise: (id) => openExerciseDetail(id, location.hash),
+    onEditSlot: (index) => openPlanSheet({ kind: 'slot', templateId, index }),
+    onAddSlot: () => openPlanSheet({ kind: 'slot', templateId, index: null }),
+    onMoveSlot: (index, dir) => applyPlan(moveSlotGroup(plan, templateId, index, dir)),
+    onRemoveSlot: (index) => {
+      if (!window.confirm(`删掉「${slotName(index)}」这一组？组里的动作还在动作库里，已保存的记录不受影响。`)) return;
+      applyPlan(removeSlotGroup(plan, templateId, index));
     },
+    onAddToSlot: (index) => openPlanSheet({ kind: 'pick', templateId, index }),
+    onMoveInSlot: (index, id, dir) => applyPlan(moveInSlot(plan, templateId, index, id, dir)),
+    onRemoveFromSlot: (index, id) => applyPlan(removeFromSlot(plan, templateId, index, id)),
     onBack: () => { location.hash = '#plan'; },
   });
   const sheet = state.planSheet;
-  if (sheet && sheet.kind === 'exercise') {
-    const existing = sheet.exerciseId ? findExercise(template, sheet.exerciseId) : null;
+  if (!sheet || sheet.templateId !== templateId) return;
+  const slot = sheet.index == null ? null : (template.slots || [])[sheet.index];
+  if (sheet.kind === 'slot') {
+    renderSlotSheet(root, {
+      title: slot ? `修改 · ${slot.muscle || '这一组'}` : '新增肌群',
+      slot,
+      onSave: ({ muscle, note }) => applyPlan(slot ? editSlot(plan, templateId, sheet.index, { muscle, note }) : addSlot(plan, templateId, muscle, note)),
+      onClose: closePlanSheet,
+    });
+  } else if (sheet.kind === 'pick' && slot) {
+    // 同肌群的排在前面；这一天已经有的不列（同一个动作一天里只能出现一次）
+    const used = idsInTemplate(plan, templateId);
+    const groups = groupByMuscle(plan)
+      .map((g) => ({ ...g, list: g.list.filter((ex) => !used.has(ex.id)) }))
+      .filter((g) => g.list.length);
+    groups.sort((a, b) => (b.muscle === slot.muscle) - (a.muscle === slot.muscle));
+    renderExercisePicker(root, {
+      title: `加到「${slot.muscle || '这一组'}」`,
+      groups,
+      onPick: (id) => applyPlan(addToSlot(plan, templateId, sheet.index, id)),
+      onCreate: () => openPlanSheet({ kind: 'create', templateId, index: sheet.index }),
+      onClose: closePlanSheet,
+    });
+  } else if (sheet.kind === 'create' && slot) {
     renderExerciseSheet(root, {
-      title: existing ? `修改 · ${existing.name}` : '新增动作',
-      exercise: existing,
+      title: `新建动作 · ${slot.muscle || '这一组'}`,
+      exercise: { muscle: slot.muscle },
       defaultRestSeconds: state.settings.defaultRestSeconds,
       onSave: (form) => {
-        const ex = exerciseFromForm(form, existing || {});
-        if (existing) applyPlan(updateExercise(plan, templateId, existing.id, ex));
-        else applyPlan(addExercise(plan, templateId, { id: newExerciseId(Date.now()), ...ex }));
+        const r = createLibraryExercise(plan, newExerciseId(Date.now()), exerciseFromForm(form, {}));
+        if (idsInTemplate(plan, templateId).has(r.id)) {
+          window.alert(`「${form.name}」已经在这个训练日里了。`);
+          applyPlan(r.plan);
+          return;
+        }
+        if (r.existed) window.alert(`动作库里已经有「${form.name}」，直接用它（设置按动作库里的）。`);
+        applyPlan(addToSlot(r.plan, templateId, sheet.index, r.id));
       },
       onClose: closePlanSheet,
     });
@@ -1671,7 +1710,7 @@ function renderFirstRun(root) {
 
 function render() {
   renderView();
-  renderTabBar(document.getElementById('tabbar'), state.firstRun ? null : tabForView(currentView()));
+  renderTabBar(document.getElementById('tabbar'), state.firstRun ? null : tabForView(currentView(), state.detailFrom));
   // 结束训练的汇总：只在训练页和首页（草稿卡的"结束并保存"）上盖着；去了别的页就收掉
   if (state.finishSheet) {
     const view = currentView();
@@ -1708,9 +1747,7 @@ function syncRestTimer() {
     const ref = restReferenceSeconds(s, t, state.settings.defaultRestSeconds);
     const at = s.restStartedAt + ref * 1000;
     if (at > Date.now()) {
-      const base = s.lastSetExerciseId ? findExercise(t, s.lastSetExerciseId) : null;
-      const entry = s.lastSetExerciseId ? findEntry(s, s.lastSetExerciseId) : null;
-      const ex = base && entry ? effectiveExercise(entry, base, t) : base;
+      const ex = lastSetExercise(s, t); // 上一组实际做的动作
       payload = { at, title: '休息到了', body: `${ex ? `${ex.name} · ` : ''}参考 ${formatClock(ref * 1000)}`, sound: state.settings.sound };
       key = `${at}|${payload.sound}`;
     }
@@ -1996,7 +2033,7 @@ async function main() {
       plan = await migrateStoredData(plan);
     } catch (err) {
       // 这次先在内存里用新格式；库里的旧记录下次打开按动作库再换（替代动作名照样认得）
-      if (!isLibraryPlan(plan)) {
+      if (!isSlotPlan(plan)) {
         plan = ensureLibraryPlan(plan);
         state.saveError = `动作库迁移没做完：${err.message}，下次打开会再试`;
       }

@@ -1,13 +1,8 @@
 // plan-view.js — 计划编辑页（spec 3.5）：总览（每周安排 / 调课 / 训练日）、训练日动作列表、编辑表单。只画 DOM。
 import { el, replaceChildren } from './dom.js';
 import { formatLoad, formatSetsReps, parseDateKey, WEEKDAY_LABELS } from './schedule.js';
-import { entryToAssignment, alternatesToText, parseAlternates } from './plan-edit.js';
+import { entryToAssignment } from './plan-edit.js';
 import { lbToDisplay, displayToLb, displayUnit, weightStep } from './units.js';
-
-// 替代动作文字里的重量按显示单位（存的是 lb）
-function altsDisplayText(list) {
-  return alternatesToText((list || []).map((a) => (a.load && a.load.value != null ? { ...a, load: { ...a.load, value: lbToDisplay(a.load.value) } } : a)));
-}
 
 // 没改过的数（显示值和原来的一样）保留原来的 lb：kg 显示时来回换算有舍入，不然点一下保存别的动作的重量就变了
 function keepLb(displayValue, originalLb) {
@@ -15,13 +10,6 @@ function keepLb(displayValue, originalLb) {
   return originalLb != null && lbToDisplay(originalLb) === displayValue ? originalLb : displayToLb(displayValue);
 }
 
-function altsFromDisplayText(text, originals = []) {
-  return parseAlternates(text).map((a) => {
-    if (!a.load || a.load.value == null) return a;
-    const orig = (originals || []).find((o) => o.name === a.name && o.load && o.load.value != null);
-    return { ...a, load: { ...a.load, value: keepLb(a.load.value, orig ? orig.load.value : null) } };
-  });
-}
 
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
@@ -223,27 +211,89 @@ export function renderAssignmentSheet(root, { title, plan, assign, date, withDat
 
 /* ---------- 训练日的动作列表 ---------- */
 
-export function renderPlanDay(root, { template, saveError, onEditExercise, onMove, onRemove, onAdd, onBack }) {
-  const rows = (template.exercises || []).map((ex, i, arr) =>
-    el('li', { class: 'hist-row plan-ex-row' }, [
-      el('button', { class: 'hist-row-btn', type: 'button', onclick: () => onEditExercise(ex.id) }, [
-        el('span', { class: 'hist-date', text: ex.name }),
-        el('span', { class: 'hist-type', text: formatSetsReps(ex) }),
-        el('span', { class: 'hist-meta', text: `${formatLoad(ex.load)} · 休息 ${ex.restSeconds ?? '—'} 秒${(ex.alternates || []).length ? ` · 替代 ${altsDisplayText(ex.alternates)}` : ''}${ex.notes ? ` · ${ex.notes}` : ''}` }),
+// 训练日（用户 2026-11-13）：一组 = 一个肌群，放几个动作，第一个是默认，训练时可以换成组里别的。
+// 点动作名进它的详情改设置（"动作"页同一个地方）；组可以改名 / 加当天备注、上下移、删掉；组里的动作可以设为默认、上移、拿掉
+export function renderPlanDay(root, { template, saveError, onOpenExercise, onEditSlot, onMoveSlot, onRemoveSlot, onAddToSlot, onMoveInSlot, onRemoveFromSlot, onAddSlot, onBack }) {
+  const lib = template.library || {};
+  const slots = template.slots || [];
+  const small = (label, onclick, attrs = {}, cls = 'btn-secondary') => el('button', { class: cls, type: 'button', onclick, ...attrs }, label);
+  const cards = slots.map((slot, si) => {
+    const name = slot.muscle || '未命名';
+    const ids = (slot.ids || []).filter((id) => lib[id]);
+    const rows = ids.map((id, i) => {
+      const ex = lib[id];
+      return el('li', { class: 'slot-ex' }, [
+        el('button', { class: 'hist-row-btn', type: 'button', onclick: () => onOpenExercise(id) }, [
+          el('span', { class: 'hist-date', text: ex.name }),
+          el('span', { class: 'hist-type', text: formatSetsReps(ex) }),
+          el('span', { class: 'hist-meta', text: `${i === 0 ? '默认 · ' : ''}${formatLoad(ex.load)}` }),
+        ]),
+        el('div', { class: 'plan-ex-actions' }, [
+          i > 0 ? small(i === 1 ? '设为默认' : '上移', () => onMoveInSlot(si, id, -1), { 'aria-label': `${ex.name} ${i === 1 ? '设为默认' : '上移'}` }) : null,
+          small('拿掉', () => onRemoveFromSlot(si, id), { 'aria-label': `从${name}拿掉${ex.name}` }, 'btn-secondary plan-delete'),
+        ]),
+      ]);
+    });
+    return el('section', { class: 'card slot-card' }, [
+      el('div', { class: 'slot-head' }, [
+        el('button', { class: 'slot-name', type: 'button', onclick: () => onEditSlot(si), 'aria-label': `${name}：改名或备注` }, [
+          el('span', { class: 'slot-title', text: name }),
+          el('span', { class: 'slot-edit', text: '改名' }),
+        ]),
+        el('div', { class: 'plan-ex-actions slot-head-actions' }, [
+          small('上移', () => onMoveSlot(si, -1), { disabled: si === 0, 'aria-label': `${name} 上移` }),
+          small('下移', () => onMoveSlot(si, 1), { disabled: si === slots.length - 1, 'aria-label': `${name} 下移` }),
+          small('删除', () => onRemoveSlot(si), { 'aria-label': `删除${name}这一组` }, 'btn-secondary plan-delete'),
+        ]),
       ]),
-      el('div', { class: 'plan-ex-actions' }, [
-        el('button', { class: 'btn-secondary', type: 'button', disabled: i === 0, 'aria-label': `${ex.name} 上移`, onclick: () => onMove(ex.id, -1) }, '上移'),
-        el('button', { class: 'btn-secondary', type: 'button', disabled: i === arr.length - 1, 'aria-label': `${ex.name} 下移`, onclick: () => onMove(ex.id, 1) }, '下移'),
-        el('button', { class: 'btn-secondary plan-delete', type: 'button', 'aria-label': `${ex.name} 删除`, onclick: () => onRemove(ex.id) }, '删除'),
-      ]),
-    ])
-  );
+      slot.note ? el('p', { class: 'ex-notes slot-note', text: slot.note }) : null,
+      rows.length ? el('ul', { class: 'slot-list', role: 'list' }, rows) : el('p', { class: 'muted slot-empty', text: '还没有动作' }),
+      el('button', { class: 'btn-secondary link-btn slot-add', type: 'button', onclick: () => onAddToSlot(si) }, '加动作'),
+    ]);
+  });
   replaceChildren(root, [
-    header(template.name, `${rows.length} 个动作${template.enabled === false ? ' · 未启用' : ''}`, onBack),
+    header(template.name, `${slots.length} 组${template.enabled === false ? ' · 未启用' : ''}`, onBack),
     saveError ? el('p', { class: 'problem save-error', text: saveError }) : null,
-    rows.length ? el('ul', { class: 'hist-list', role: 'list' }, rows) : el('p', { class: 'muted', text: '还没有动作' }),
-    el('div', { class: 'home-actions' }, [el('button', { class: 'btn-primary', type: 'button', onclick: onAdd }, '新增动作')]),
+    el('p', { class: 'muted hist-hint', text: '每组第一个动作是默认，训练时点"换动作"换成组里别的。点动作名改它的组数、次数、重量。' }),
+    ...cards,
+    cards.length ? null : el('p', { class: 'muted', text: '还没有肌群' }),
+    el('div', { class: 'home-actions' }, [el('button', { class: 'btn-primary', type: 'button', onclick: onAddSlot }, '新增肌群')]),
   ]);
+}
+
+// 一组的名字和当天备注（新增肌群也用它）
+export function renderSlotSheet(root, { title, slot, onSave, onClose }) {
+  const body = [
+    textField('slot-muscle', '肌群', slot ? slot.muscle : '', { maxlength: '20', placeholder: '如 上胸' }),
+    textField('slot-note', '当天备注（可选）', slot ? slot.note : '', { maxlength: '80', placeholder: '如 反手日只做 2 组' }),
+  ];
+  const shell = sheetShell(root, title, body, { onClose });
+  const q = (id) => shell.sheet.querySelector('#' + id);
+  const save = () => {
+    const muscle = q('slot-muscle').value.trim();
+    if (!muscle) return (shell.errEl.textContent = '先填肌群名');
+    shell.done();
+    onSave({ muscle, note: q('slot-note').value.trim() });
+    return undefined;
+  };
+  shell.sheet.appendChild(el('button', { class: 'btn-primary sheet-save', type: 'button', onclick: save }, '保存'));
+  shell.sheet.appendChild(el('button', { class: 'btn-secondary sheet-cancel', type: 'button', onclick: shell.close }, '取消'));
+}
+
+// 往一组里加动作：groups = [{ muscle, list: [动作] }]（调用方已排好：同肌群的在前、这一天已经有的去掉）；最上面"新建一个动作"
+export function renderExercisePicker(root, { title, groups, onPick, onCreate, onClose }) {
+  const item = (ex) =>
+    el('button', { class: 'sheet-item', type: 'button', onclick: () => onPick(ex.id) }, [
+      el('span', { class: 'sheet-item-name', text: ex.name }),
+      el('span', { class: 'sheet-item-sub', text: `${formatSetsReps(ex)} · ${formatLoad(ex.load)}` }),
+    ]);
+  const body = [
+    el('button', { class: 'btn-secondary link-btn picker-create', type: 'button', onclick: onCreate }, '新建一个动作'),
+    ...groups.flatMap((g) => [el('div', { class: 'picker-group', text: g.muscle }), ...g.list.map(item)]),
+    groups.length ? null : el('p', { class: 'muted', text: '动作库里的动作这一天都用上了，新建一个吧。' }),
+  ];
+  const shell = sheetShell(root, title, body, { onClose });
+  shell.sheet.appendChild(el('button', { class: 'btn-secondary sheet-cancel', type: 'button', onclick: shell.close }, '取消'));
 }
 
 /* ---------- 动作编辑表单 ---------- */
@@ -254,8 +304,8 @@ function toNum(v) {
   return Number.isFinite(n) ? n : NaN;
 }
 
-// showAlternates：训练日里改动作时有"替代动作"一栏；"动作"页单独设置动作时没有（替代关系不挂在动作上，用户 2026-11-13）
-export function renderExerciseSheet(root, { title, exercise, defaultRestSeconds = 90, showAlternates = true, onSave, onClose }) {
+// 一个动作的设置（"动作"页、动作详情、训练日里新建动作）。替代关系不挂在动作上（用户 2026-11-13），这里没有替代动作一栏
+export function renderExerciseSheet(root, { title, exercise, defaultRestSeconds = 90, onSave, onClose }) {
   const ex = exercise || {};
   const load = ex.load || {};
   const body = [
@@ -266,7 +316,6 @@ export function renderExerciseSheet(root, { title, exercise, defaultRestSeconds 
     el('div', { class: 'set-inputs' }, [numField('ex-sets-min', '组数 最少', (ex.sets || {}).min ?? 3, { step: '1', min: '1' }), numField('ex-sets-max', '组数 目标', (ex.sets || {}).max ?? 3, { step: '1', min: '1' })]),
     el('div', { class: 'set-inputs' }, [numField('ex-reps-min', '次数 下限', (ex.reps || {}).min ?? 6, { step: '1', min: '1' }), numField('ex-reps-max', '次数 上限', (ex.reps || {}).max ?? 10, { step: '1', min: '1' })]),
     el('div', { class: 'set-inputs' }, [numField('ex-rest', '参考休息秒数', ex.restSeconds ?? defaultRestSeconds, { step: '5', min: '0' }), numField('ex-step', `档位 ${displayUnit()}（± 一格多少，可选）`, load.step ? lbToDisplay(load.step) : null, { step: 'any', min: '0', placeholder: '如 8.5' })]),
-    showAlternates ? textField('ex-alts', '替代动作（逗号分隔，可写 名称:重量）', altsDisplayText(ex.alternates), { placeholder: '斜下胸推机器:45，哑铃推' }) : null,
     textField('ex-notes', '备注（可选）', ex.notes, { maxlength: '80' }),
   ];
   const shell = sheetShell(root, title, body, { onClose });
@@ -296,7 +345,6 @@ export function renderExerciseSheet(root, { title, exercise, defaultRestSeconds 
       perSideLoad: q('ex-perSideLoad').checked,
       perSide: q('ex-perSide').checked,
       distance: q('ex-distance').checked,
-      alternates: showAlternates ? altsFromDisplayText(q('ex-alts').value, ex.alternates) : undefined,
       notes: q('ex-notes').value.trim(),
     });
     return undefined;

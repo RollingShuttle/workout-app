@@ -1502,3 +1502,79 @@ body.has-tabbar {
 .ex-settings-edit {
   margin: 12px 0 14px;
 }
+
+/* 训练日按肌群分组（用户 2026-11-13）：一组一张卡片，组名 + 动作 + "加动作" */
+.slot-card {
+  padding: 0 0 12px;
+  overflow: hidden;
+}
+
+.slot-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+  padding: 10px 14px 4px;
+}
+
+.slot-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+}
+
+.slot-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.slot-edit {
+  color: var(--accent);
+  font-size: 15px;
+}
+
+.slot-head-actions {
+  padding: 0;
+}
+
+.slot-note {
+  margin: 0 14px 6px;
+}
+
+.slot-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.slot-ex {
+  border-top: 1px solid var(--line);
+}
+
+.slot-empty {
+  margin: 4px 14px 8px;
+}
+
+.slot-add {
+  margin: 8px 14px 0;
+}
+
+/* 往一组里加动作的选单 */
+.picker-create {
+  margin: 4px 0 8px;
+}
+
+.picker-group {
+  margin: 14px 0 2px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}

@@ -3,7 +3,7 @@ import { el, replaceChildren } from './dom.js';
 import { WEEKDAY_LABELS, parseDateKey, formatLoad, formatSetsReps } from './schedule.js';
 import { formatSets, setsOfExercise } from './history.js';
 import { findExercise, effectiveExercise, activeDurationMs } from './workout.js';
-import { exerciseById, templatesUsing } from './exercise-library.js';
+import { exerciseById, usageText } from './exercise-library.js';
 import { formatWeightDual, lbToDisplay, displayToLb, displayUnit } from './units.js';
 import { describeActivity, findCardio } from './activity.js';
 
@@ -93,13 +93,13 @@ export function renderSessionDetail(root, { session, plan, onOpenExercise, onEdi
     const name = ex ? ex.name : entry.exerciseId;
     const bodyweight = Boolean(ex && (ex.load || {}).bodyweight);
     const status = STATUS_LABEL[entry.status] || entry.status;
-    const setsText = entry.sets.length ? formatSets(entry.sets, { bodyweight, countUnit: base ? base.countUnit : null, dual: true }) : '—';
+    const setsText = entry.sets.length ? formatSets(entry.sets, { bodyweight, countUnit: ex ? ex.countUnit : null, dual: true }) : '—';
     return el('li', { class: `hist-ex hist-ex-${entry.status}` }, [
       el('button', { class: 'hist-ex-btn', type: 'button', disabled: !base, onclick: () => onOpenExercise(entry.exerciseId) }, [
         el('span', { class: 'hist-ex-name', text: name }),
         el('span', { class: 'hist-ex-status', text: status }),
         el('span', { class: 'hist-ex-sets', text: setsText }),
-        entry.alternateId && base ? el('span', { class: 'hist-ex-alt', text: `替代 ${base.name}` }) : null,
+        entry.alternateId && base ? el('span', { class: 'hist-ex-alt', text: `换自 ${base.name}` }) : null,
       ]),
       // 改已录入的记录：替代动作、每组重量 / 次数、增删组
       onEditEntry ? el('button', { class: 'btn-secondary hist-ex-edit', type: 'button', onclick: () => onEditEntry(entry.exerciseId) }, '编辑') : null,
@@ -135,10 +135,12 @@ function toNum(v) {
 
 // base：计划里的动作（动作库里也找不到 → null，此时只能改组）；currentAlt：这条记录现在的替代动作（动作库里查的）。
 // 保存时 onSave({ alternateId, sets: [{ weight(lb), reps }] })；没有"做的是哪个动作"选框时替代动作保持不变
-export function renderEntryEditSheet(root, { entry, base, currentAlt = null, onSave, onClose }) {
-  const load = base ? base.load || {} : {};
+// 要不要填重量、次数还是米，按这条记录现在实际做的动作（换过动作就是换上来的那个）；不填重量时原来记的重量照样留着
+export function renderEntryEditSheet(root, { entry, base, currentAlt = null, exerciseOf = () => null, onSave, onClose }) {
+  const actual = (entry.alternateId && (currentAlt || exerciseOf(entry.alternateId))) || base;
+  const load = actual ? actual.load || {} : {};
   const bodyweight = Boolean(load.bodyweight);
-  const byDistance = Boolean(base && base.countUnit === 'm');
+  const byDistance = Boolean(actual && actual.countUnit === 'm');
   const alternates = [...(base ? base.alternates || [] : [])];
   // 替代关系后来删了：选项里补上现在这个，不然一保存就被改回原动作
   if (entry.alternateId && !alternates.some((a) => a.id === entry.alternateId)) {
@@ -187,7 +189,7 @@ export function renderEntryEditSheet(root, { entry, base, currentAlt = null, onS
   const addSet = () => {
     syncFromDom();
     const last = sets[sets.length - 1];
-    sets.push({ weight: last ? last.weight : bodyweight ? null : lbToDisplay(load.value ?? null), reps: last ? last.reps : (base && base.reps ? base.reps.max : null) });
+    sets.push({ weight: last ? last.weight : bodyweight ? null : lbToDisplay(load.value ?? null), reps: last ? last.reps : (actual && actual.reps ? actual.reps.max : null) });
     paint();
   };
   const removeSet = () => {
@@ -203,7 +205,7 @@ export function renderEntryEditSheet(root, { entry, base, currentAlt = null, onS
       const s = sets[i];
       if (s.reps == null || Number.isNaN(s.reps) || !Number.isInteger(s.reps) || s.reps < 1) return (errEl.textContent = `第 ${i + 1} 组的${byDistance ? '距离' : '次数'}要填 ≥1 的整数`);
       if (!bodyweight && (s.weight == null || Number.isNaN(s.weight) || s.weight < 0)) return (errEl.textContent = `第 ${i + 1} 组的重量要填`);
-      out.push({ weight: bodyweight ? null : displayToLb(s.weight), reps: s.reps });
+      out.push({ weight: bodyweight ? (entry.sets[i] ? entry.sets[i].weight ?? null : null) : displayToLb(s.weight), reps: s.reps }); // 自重：原来记的重量照样留着
     }
     const altSel = root.querySelector('#es-alt');
     document.removeEventListener('keydown', onKey);
@@ -216,7 +218,7 @@ export function renderEntryEditSheet(root, { entry, base, currentAlt = null, onS
       ? el('div', { class: 'field' }, [
           el('label', { class: 'field-label', for: 'es-alt', text: '做的是哪个动作' }),
           el('select', { class: 'sheet-select', id: 'es-alt' }, [
-            el('option', { value: '', selected: !entry.alternateId }, `原动作：${base.name}`),
+            el('option', { value: '', selected: !entry.alternateId }, `默认：${base.name}`),
             ...alternates.map((a) => el('option', { value: a.id, selected: entry.alternateId === a.id }, a.name)),
           ]),
         ])
@@ -346,15 +348,14 @@ export function renderExerciseChart(root, { exerciseId, plan, sessions, loading,
     )
   );
   const altNote = points.alternateOnly ? ` · 另 ${points.alternateOnly} 次计划里是它、实际做了别的动作` : '';
-  const days = base ? templatesUsing(plan, exerciseId).map((t) => t.name) : [];
   const info = (label, value) => (value ? el('div', { class: 'row' }, [el('div', { class: 'row-label', text: label }), el('div', { text: value })]) : null);
   const settingsCard = base
     ? el('section', { class: 'card ex-settings' }, [
-        info('组数 × 次数', `${formatSetsReps(base)}${byDistance ? ' 米' : ''}${base.perSide ? ' · 每侧' : ''}`),
+        info('组数 × 次数', formatSetsReps(base)),
         info('重量', formatLoad(base.load)),
         info('休息', typeof base.restSeconds === 'number' ? `${base.restSeconds} 秒` : null),
         info('肌群', base.muscle || null),
-        info('用在', days.length ? days.join('、') : '没排进训练日'),
+        info('用在', usageText(plan, exerciseId)),
         info('备注', base.notes || null),
         onEdit ? el('button', { class: 'btn-secondary link-btn ex-settings-edit', type: 'button', onclick: onEdit }, '修改设置') : null,
       ])
