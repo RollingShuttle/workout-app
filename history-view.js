@@ -1,9 +1,9 @@
 // history-view.js — 历史列表、单次训练详情、动作折线。只画 DOM；数据由 app.js 传入。
 import { el, replaceChildren } from './dom.js';
-import { WEEKDAY_LABELS, parseDateKey, formatLoad } from './schedule.js';
+import { WEEKDAY_LABELS, parseDateKey, formatLoad, formatSetsReps } from './schedule.js';
 import { formatSets, setsOfExercise } from './history.js';
 import { findExercise, effectiveExercise, activeDurationMs } from './workout.js';
-import { exerciseById } from './exercise-library.js';
+import { exerciseById, templatesUsing } from './exercise-library.js';
 import { formatWeightDual, lbToDisplay, displayToLb, displayUnit } from './units.js';
 import { describeActivity, findCardio } from './activity.js';
 
@@ -318,7 +318,8 @@ export function renderLineChart(values, labels, { unit = '' } = {}) {
   return svg;
 }
 
-export function renderExerciseChart(root, { exerciseId, plan, sessions, loading, onBack }) {
+// 动作详情：上面是这个动作的设置（"修改"打开表单），下面是记录折线。从"动作"页或历史详情进来
+export function renderExerciseChart(root, { exerciseId, plan, sessions, loading, onBack, onEdit }) {
   let base = exerciseById(plan, exerciseId);
   for (const t of plan.dayTemplates || []) {
     if (base) break;
@@ -344,9 +345,24 @@ export function renderExerciseChart(root, { exerciseId, plan, sessions, loading,
       ])
     )
   );
-  const altNote = points.alternateOnly ? ` · 另 ${points.alternateOnly} 次只做了替代动作，未计入` : '';
+  const altNote = points.alternateOnly ? ` · 另 ${points.alternateOnly} 次计划里是它、实际做了别的动作` : '';
+  const days = base ? templatesUsing(plan, exerciseId).map((t) => t.name) : [];
+  const info = (label, value) => (value ? el('div', { class: 'row' }, [el('div', { class: 'row-label', text: label }), el('div', { text: value })]) : null);
+  const settingsCard = base
+    ? el('section', { class: 'card ex-settings' }, [
+        info('组数 × 次数', `${formatSetsReps(base)}${byDistance ? ' 米' : ''}${base.perSide ? ' · 每侧' : ''}`),
+        info('重量', formatLoad(base.load)),
+        info('休息', typeof base.restSeconds === 'number' ? `${base.restSeconds} 秒` : null),
+        info('肌群', base.muscle || null),
+        info('用在', days.length ? days.join('、') : '没排进训练日'),
+        info('备注', base.notes || null),
+        onEdit ? el('button', { class: 'btn-secondary link-btn ex-settings-edit', type: 'button', onclick: onEdit }, '修改设置') : null,
+      ])
+    : null;
   replaceChildren(root, [
-    header(name, loading && !points.length ? '读取中…' : `${points.length} 次训练${base ? ` · 计划 ${formatLoad(base.load)}` : ''}${altNote}`, onBack),
+    header(name, loading && !points.length ? '读取中…' : `${points.length} 次训练${altNote}`, onBack),
+    settingsCard,
+    el('h2', { class: 'plan-section-title', text: '记录' }),
     loading && !points.length
       ? el('p', { class: 'muted', text: '读取中…' })
       : points.length
@@ -362,7 +378,7 @@ export function renderExerciseChart(root, { exerciseId, plan, sessions, loading,
             renderLineChart(points.map((p) => p.totalReps), labels, { unit: ` ${countWord}` }),
           ]),
           table,
-          el('p', { class: 'muted hist-hint', text: '只统计原动作的记录，替代动作的组不计入折线' }),
+          el('p', { class: 'muted hist-hint', text: '按实际做的动作统计：不管哪天练的、是不是换上来的，都算这个动作的' }),
         ])
         : el('p', { class: 'muted', text: '这个动作还没有完成的记录' }),
   ]);

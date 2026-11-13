@@ -30,10 +30,11 @@ function fmtDate(key) {
   return d ? `${d.getMonth() + 1}月${d.getDate()}日 · ${WEEKDAY_LABELS[d.getDay()]}` : key || '';
 }
 
+// onBack 为空 = 底部固定栏里的一级页面，不放返回键
 function header(title, sub, onBack) {
   return el('header', { class: 'train-header' }, [
     el('div', { class: 'train-topline' }, [
-      el('button', { class: 'btn-back', type: 'button', onclick: onBack }, '‹ 返回'),
+      onBack ? el('button', { class: 'btn-back', type: 'button', onclick: onBack }, '‹ 返回') : null,
       el('div', { class: 'train-title' }, [
         el('h1', { class: 'train-name', text: title }),
         sub ? el('div', { class: 'train-sub', text: sub }) : null,
@@ -106,7 +107,7 @@ export function renderPlanOverview(root, { plan, saveError, onEditWeekday, onAdd
     ])
   );
   replaceChildren(root, [
-    header('计划', '改完立刻生效，不影响已保存的记录', onBack),
+    header('每周计划', '改完立刻生效，不影响已保存的记录', onBack),
     saveError ? el('p', { class: 'problem save-error', text: saveError }) : null,
     section('每周安排', list(weekRows, '')),
     section('调课（按日期覆盖当天安排）', [list(overrideRows, '没有调课'), actionBtn('新增调课', onAddOverride)]),
@@ -253,7 +254,8 @@ function toNum(v) {
   return Number.isFinite(n) ? n : NaN;
 }
 
-export function renderExerciseSheet(root, { title, exercise, defaultRestSeconds = 90, onSave, onClose }) {
+// showAlternates：训练日里改动作时有"替代动作"一栏；"动作"页单独设置动作时没有（替代关系不挂在动作上，用户 2026-11-13）
+export function renderExerciseSheet(root, { title, exercise, defaultRestSeconds = 90, showAlternates = true, onSave, onClose }) {
   const ex = exercise || {};
   const load = ex.load || {};
   const body = [
@@ -264,7 +266,7 @@ export function renderExerciseSheet(root, { title, exercise, defaultRestSeconds 
     el('div', { class: 'set-inputs' }, [numField('ex-sets-min', '组数 最少', (ex.sets || {}).min ?? 3, { step: '1', min: '1' }), numField('ex-sets-max', '组数 目标', (ex.sets || {}).max ?? 3, { step: '1', min: '1' })]),
     el('div', { class: 'set-inputs' }, [numField('ex-reps-min', '次数 下限', (ex.reps || {}).min ?? 6, { step: '1', min: '1' }), numField('ex-reps-max', '次数 上限', (ex.reps || {}).max ?? 10, { step: '1', min: '1' })]),
     el('div', { class: 'set-inputs' }, [numField('ex-rest', '参考休息秒数', ex.restSeconds ?? defaultRestSeconds, { step: '5', min: '0' }), numField('ex-step', `档位 ${displayUnit()}（± 一格多少，可选）`, load.step ? lbToDisplay(load.step) : null, { step: 'any', min: '0', placeholder: '如 8.5' })]),
-    textField('ex-alts', '替代动作（逗号分隔，可写 名称:重量）', altsDisplayText(ex.alternates), { placeholder: '斜下胸推机器:45，哑铃推' }),
+    showAlternates ? textField('ex-alts', '替代动作（逗号分隔，可写 名称:重量）', altsDisplayText(ex.alternates), { placeholder: '斜下胸推机器:45，哑铃推' }) : null,
     textField('ex-notes', '备注（可选）', ex.notes, { maxlength: '80' }),
   ];
   const shell = sheetShell(root, title, body, { onClose });
@@ -294,7 +296,7 @@ export function renderExerciseSheet(root, { title, exercise, defaultRestSeconds 
       perSideLoad: q('ex-perSideLoad').checked,
       perSide: q('ex-perSide').checked,
       distance: q('ex-distance').checked,
-      alternates: altsFromDisplayText(q('ex-alts').value, ex.alternates),
+      alternates: showAlternates ? altsFromDisplayText(q('ex-alts').value, ex.alternates) : undefined,
       notes: q('ex-notes').value.trim(),
     });
     return undefined;

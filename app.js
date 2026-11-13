@@ -65,9 +65,11 @@ import { parseWorkoutsFile, guessKind, conflictWith, sessionFromItem } from './h
 import { applySkip, setDayTo, undoOverride } from './skip-day.js';
 import { renderSkipSheet } from './skip-view.js';
 import { native } from './native.js';
-import { migrateData, ensureLibraryPlan, expandPlan, compactPlan, isLibraryPlan, isOldSession, currentExerciseId, withKeptLibrary, adoptReferencedExercises, exerciseById } from './exercise-library.js';
+import { migrateData, ensureLibraryPlan, expandPlan, compactPlan, isLibraryPlan, isOldSession, currentExerciseId, withKeptLibrary, adoptReferencedExercises, exerciseById, createLibraryExercise, updateLibraryExercise } from './exercise-library.js';
+import { renderTabBar, tabForView } from './tab-bar.js';
+import { renderLibrary } from './library-view.js';
 
-const APP_VERSION = '0.25.0';
+const APP_VERSION = '0.26.0';
 const BACKUP_META_KEY = 'backup';
 const PRE_LIBRARY_KEY = 'preLibraryBackup'; // 动作库迁移前的计划和记录原样（docs/exercise-library-plan.md），出问题能找回
 const DRAFT_LOAD_TIMEOUT_MS = 3000; // 启动时等草稿最多这么久，数据库挂住也要先把首页画出来
@@ -104,6 +106,7 @@ const state = {
   historyEdit: null, // 历史详情里打开的修改表单：{ sessionId, exerciseId } 或 { sessionId, activity: true }
   skipSheet: null, // "这天不练"表单打开时：{ dateKey }
   skipNotice: null, // 刚处理完"不练"的一句说明，首页显示一次
+  libSheet: null, // "动作"页 / 动作详情里打开的表单：{ kind: 'add' } | { kind: 'edit', id }
 };
 
 function setStatus(text) {
@@ -132,14 +135,16 @@ function findTemplate(id) {
   return (state.plan.dayTemplates || []).find((t) => t.id === id) || null;
 }
 
-// 路由：#train 训练页；#history 历史列表；#history/<id> 单次详情；#exercise/<id> 动作折线；
-// #plan 计划编辑总览；#plan/day/<id> 某个训练日的动作列表；其余首页
+// 路由：#train 训练页；#history 历史列表；#history/<id> 单次详情；#exercise/<id> 动作详情（设置 + 折线）；
+// #exercises 动作库；#plan 每周计划；#plan/day/<id> 某个训练日的动作列表；#settings 设置；其余首页（今天）。
+// 底部固定栏：今天 / 每周计划 / 动作 / 设置（tab-bar.js）
 function currentView() {
   const h = location.hash;
   if (h === '#train') return 'train';
   if (h === '#history') return 'history';
   if (h.startsWith('#history/')) return 'session';
   if (h.startsWith('#exercise/')) return 'exercise';
+  if (h === '#exercises') return 'exercises';
   if (h === '#plan') return 'plan';
   if (h.startsWith('#plan/day/')) return 'planDay';
   if (h === '#settings') return 'settings';
@@ -444,7 +449,7 @@ function renderHome(root, day) {
       renderBody(day, plan),
       ...day.problems.map((p) => el('p', { class: 'problem', text: p })),
     ]),
-    plan.blank ? el('p', { class: 'today-note today-note-plain', text: '现在是空白计划，每天都显示休息。到「计划」里加训练日和每周安排。' }) : null,
+    plan.blank ? el('p', { class: 'today-note today-note-plain', text: '现在是空白计划，每天都显示休息。到下面的「每周计划」里加训练日和每周安排。' }) : null,
     draft && !draftIsToday ? renderDraftCard(draft) : null,
     renderTodayActivities(todayActs, plan),
     state.historyReady && !state.historyError ? renderBackupCard() : null,
@@ -467,8 +472,6 @@ function renderHome(root, day) {
     renderRules(plan.rules),
     el('div', { class: 'home-links' }, [
       el('a', { class: 'btn-secondary link-btn', href: '#history' }, '历史记录'),
-      el('a', { class: 'btn-secondary link-btn', href: '#plan' }, '计划'),
-      el('a', { class: 'btn-secondary link-btn', href: '#settings' }, '设置'),
     ]),
   ]);
   if (state.activitySheet) {
@@ -1096,12 +1099,70 @@ function renderHistoryView(root, view) {
     renderHistoryEditSheet(root, session);
     return;
   }
+  const exerciseId = routeParam();
   renderExerciseChart(root, {
-    exerciseId: routeParam(),
+    exerciseId,
     plan: state.plan,
     sessions,
     loading,
-    onBack: () => { location.hash = state.chartFrom ? `#history/${encodeURIComponent(state.chartFrom)}` : '#history'; },
+    onBack: () => { location.hash = state.chartFrom ? `#history/${encodeURIComponent(state.chartFrom)}` : '#exercises'; },
+    onEdit: exerciseById(state.plan, exerciseId) ? () => { state.libSheet = { kind: 'edit', id: exerciseId }; render(); } : null,
+  });
+  renderLibrarySheet(root);
+}
+
+/* ---------- 动作页（底部固定栏"动作"）：动作库里每个动作单独设置 ---------- */
+
+function renderLibraryView(root) {
+  state.chartFrom = null; // 从这里点进动作详情，返回回到动作页
+  ensureHistory();
+  renderLibrary(root, {
+    plan: state.plan,
+    saveError: state.saveError,
+    onOpen: (id) => { location.hash = `#exercise/${encodeURIComponent(id)}`; },
+    onAdd: () => { state.libSheet = { kind: 'add' }; render(); },
+  });
+  renderLibrarySheet(root);
+}
+
+function renderLibrarySheet(root) {
+  const sheet = state.libSheet;
+  if (!sheet) return;
+  const close = () => { state.libSheet = null; render(); };
+  if (sheet.kind === 'add') {
+    renderExerciseSheet(root, {
+      title: '新增动作',
+      exercise: null,
+      defaultRestSeconds: state.settings.defaultRestSeconds,
+      showAlternates: false,
+      onSave: (form) => {
+        const r = createLibraryExercise(state.plan, newExerciseId(Date.now()), exerciseFromForm({ ...form, alternates: [] }, {}));
+        state.libSheet = null;
+        applyPlan(r.plan);
+        if (r.existed) window.alert(`动作库里已经有「${form.name}」，打开它。要改就点"修改设置"。`);
+        location.hash = `#exercise/${encodeURIComponent(r.id)}`;
+      },
+      onClose: close,
+    });
+    return;
+  }
+  const existing = exerciseById(state.plan, sheet.id);
+  if (!existing) {
+    state.libSheet = null;
+    return;
+  }
+  renderExerciseSheet(root, {
+    title: `修改 · ${existing.name}`,
+    exercise: existing,
+    defaultRestSeconds: state.settings.defaultRestSeconds,
+    showAlternates: false,
+    onSave: (form) => {
+      const ex = exerciseFromForm(form, existing);
+      delete ex.alternates; // 这张表单没有替代动作一栏：不动原来的
+      state.libSheet = null;
+      applyPlan(updateLibraryExercise(state.plan, null, existing.id, ex));
+    },
+    onClose: close,
   });
 }
 
@@ -1149,7 +1210,7 @@ function renderPlanView(root, view) {
       onEditOverride: (date, assign) => openPlanSheet({ kind: 'override', date, assign, isNew: false }),
       onOpenDay: (id) => { location.hash = `#plan/day/${encodeURIComponent(id)}`; },
       onToggleTemplate: (id, enabled) => applyPlan(setTemplateEnabled(plan, id, enabled)),
-      onBack: () => { location.hash = ''; },
+      onBack: null, // 底部固定栏的一级页面
     });
     const sheet = state.planSheet;
     if (sheet && sheet.kind === 'weekday') {
@@ -1565,9 +1626,7 @@ function renderSettingsView(root) {
     },
     onReloadBuiltin: reloadBuiltinPlan,
     onClearAll: clearAllData,
-    onBack: () => {
-      location.hash = '';
-    },
+    onBack: null, // 底部固定栏的一级页面
   });
 }
 
@@ -1612,6 +1671,7 @@ function renderFirstRun(root) {
 
 function render() {
   renderView();
+  renderTabBar(document.getElementById('tabbar'), state.firstRun ? null : tabForView(currentView()));
   // 结束训练的汇总：只在训练页和首页（草稿卡的"结束并保存"）上盖着；去了别的页就收掉
   if (state.finishSheet) {
     const view = currentView();
@@ -1848,7 +1908,9 @@ function renderView() {
     state.hkPreview = null;
   }
   if (view !== 'session') state.historyEdit = null;
+  if (view !== 'exercises' && view !== 'exercise') state.libSheet = null;
   if (view === 'home') renderHome(root, day);
+  else if (view === 'exercises') renderLibraryView(root);
   else if (view === 'plan' || view === 'planDay') renderPlanView(root, view);
   else if (view === 'settings') renderSettingsView(root);
   else renderHistoryView(root, view);

@@ -1423,3 +1423,82 @@ input.num:focus {
 .skip-warn li + li {
   margin-top: 4px;
 }
+
+/* 底部固定栏（用户 2026-11-13）：今天 / 每周计划 / 动作 / 设置。训练页和首次启动页不显示（tab-bar.js）。
+   高度 56px（主按钮 ≥ 56px）+ 底部安全区；内容区留出同样的空，最后一行不被挡住。弹出的表单盖在它上面 */
+.tab-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  background: var(--card);
+  border-top: 1px solid var(--line);
+}
+
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .tab-bar {
+    background: color-mix(in srgb, var(--card) 88%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+  }
+}
+
+.tab-bar[hidden] {
+  display: none;
+}
+
+.tab-bar-inner {
+  display: flex;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.tab {
+  flex: 1;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 500;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tab[aria-current='page'] {
+  color: var(--accent);
+  font-weight: var(--btn-weight);
+}
+
+.tab-icon,
+.tab-icon svg {
+  display: block;
+  width: 26px;
+  height: 26px;
+}
+
+body.has-tabbar {
+  padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+}
+
+/* 动作详情的设置卡片 */
+.ex-settings .row {
+  display: grid;
+  grid-template-columns: 6.5em 1fr;
+  align-items: baseline;
+  column-gap: 12px;
+}
+
+.ex-settings .row-label {
+  margin: 0;
+  font-size: 15px;
+}
+
+.ex-settings-edit {
+  margin: 12px 0 14px;
+}

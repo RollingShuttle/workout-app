@@ -369,12 +369,15 @@ function resolveAlternateSpecs(exercises, specs, base) {
 }
 
 // 把表单的值写进动作库。form 是 plan-edit.js exerciseFromForm 的结果（alternates 是 [{ name, load? }]，notes 是备注）
+// form.alternates 为 undefined（"动作"页的表单没有替代动作这一栏）时保留原来的替代关系
 function writeExercise(plan, templateId, id, form) {
   const { alternates: specs, notes, id: _ignored, ...def } = form;
   const exists = plan.exercises.some((e) => e.id === id);
   let exercises = exists ? plan.exercises : [...plan.exercises, { id, ...def, alternates: [] }];
   const base = { id, ...def };
-  const resolved = resolveAlternateSpecs(exercises, specs, base);
+  const before = exercises.find((e) => e.id === id);
+  const resolved =
+    specs === undefined ? { exercises, ids: (before && before.alternates) || [] } : resolveAlternateSpecs(exercises, specs, base);
   exercises = resolved.exercises;
   const t = plan.dayTemplates.find((x) => x.id === templateId);
   const slot = t ? (t.exercises || []).find((s) => s.id === id) : null;
@@ -411,6 +414,19 @@ export function addLibraryExercise(plan, templateId, newId, form) {
     (t.exercises || []).some((s) => s.id === id) ? t : { ...t, exercises: [...(t.exercises || []), { id }] }
   );
   return expandPlan(next);
+}
+
+// "动作"页新增：动作库里已经有同名的就不新建，返回那一条的 id
+export function createLibraryExercise(plan, newId, form) {
+  const p = compactPlan(plan);
+  const same = p.exercises.find((e) => nameKey(e.name) === nameKey(form.name));
+  if (same) return { plan: expandPlan(p), id: same.id, existed: true };
+  return { plan: expandPlan(writeExercise(p, null, newId, form)), id: newId, existed: false };
+}
+
+// 哪些训练日用了这个动作（运行时形状）
+export function templatesUsing(plan, id) {
+  return (plan.dayTemplates || []).filter((t) => (t.exercises || []).some((e) => e && e.id === id));
 }
 
 // 从训练日里拿掉；动作库里的那一条留着，历史记录里的名字还认得

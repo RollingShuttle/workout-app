@@ -47,10 +47,11 @@ function hkCard(hkPreview, { onHkChoice, onHkImport, onHkCancel }) {
   ]);
 }
 
+// onBack 为空 = 底部固定栏里的一级页面，不放返回键
 function header(title, sub, onBack) {
   return el('header', { class: 'train-header' }, [
     el('div', { class: 'train-topline' }, [
-      el('button', { class: 'btn-back', type: 'button', onclick: onBack }, '‹ 返回'),
+      onBack ? el('button', { class: 'btn-back', type: 'button', onclick: onBack }, '‹ 返回') : null,
       el('div', { class: 'train-title' }, [
         el('h1', { class: 'train-name', text: title }),
         sub ? el('div', { class: 'train-sub', text: sub }) : null,
